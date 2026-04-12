@@ -1,92 +1,32 @@
 ---
 import BaseLayout from '../../layouts/BaseLayout.astro';
+import ExploreTable from '../../components/ExploreTable.astro';
 import fs from 'node:fs';
 import path from 'node:path';
 
-const siteDataDir = path.resolve(process.cwd(), '..', 'site_data', 'hospital');
-const hospitals: Array<{ ccn: string; name: string; city: string; state: string; type: string; rating: string | null }> = [];
-
-if (fs.existsSync(siteDataDir)) {
-  const files = fs.readdirSync(siteDataDir).filter((f: string) => f.endsWith('.json'));
-  for (const file of files) {
-    const m = JSON.parse(fs.readFileSync(path.join(siteDataDir, file), 'utf-8'));
-    hospitals.push({
-      ccn: m.ccn,
-      name: m.facility_name,
-      city: m.city,
-      state: m.state,
-      type: m.hospital_type,
-      rating: m.hospital_overall_rating,
-    });
-  }
+const indexPath = path.resolve(process.cwd(), 'public', 'explore', 'hospitals.json');
+let count = 0;
+if (fs.existsSync(indexPath)) {
+  count = JSON.parse(fs.readFileSync(indexPath, 'utf-8')).length;
 }
-
-hospitals.sort((a, b) => a.name.localeCompare(b.name));
 ---
 
 <BaseLayout title="Hospitals" description="Browse all hospitals on CareGraph">
   <div class="page-header">
     <h1>Hospitals</h1>
-    <p class="subtitle">{hospitals.length.toLocaleString()} hospitals</p>
+    <p class="subtitle">{count.toLocaleString()} hospitals</p>
   </div>
 
-  <div class="card">
-    <div style="overflow-x: auto;">
-      <table class="data-table" id="data-table">
-        <thead>
-          <tr>
-            <th>Name</th>
-            <th>CCN</th>
-            <th>City</th>
-            <th>State</th>
-            <th>Type</th>
-            <th>Rating</th>
-          </tr>
-        </thead>
-        <tbody>
-          {hospitals.map(h => (
-            <tr>
-              <td><a href={`/hospital/${h.ccn}/`}>{h.name}</a></td>
-              <td><code>{h.ccn}</code></td>
-              <td>{h.city}</td>
-              <td>{h.state}</td>
-              <td>{h.type}</td>
-              <td>{h.rating && h.rating !== 'Not Available' ? (
-                <span>
-                  <span class="star-rating">
-                    {[1,2,3,4,5].map(i => (
-                      <span class={i <= parseInt(h.rating!) ? 'star-filled' : 'star-empty'}>&#9733;</span>
-                    ))}
-                  </span>
-                </span>
-              ) : '\u2014'}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  </div>
-
-  <script>
-    const table = document.getElementById('data-table') as HTMLTableElement | null;
-    if (table) {
-      const headers = table.querySelectorAll('th');
-      headers.forEach((header, index) => {
-        header.addEventListener('click', () => {
-          const tbody = table.querySelector('tbody');
-          if (!tbody) return;
-          const rows = Array.from(tbody.querySelectorAll('tr'));
-          const ascending = header.getAttribute('data-sort') !== 'asc';
-          headers.forEach(h => h.removeAttribute('data-sort'));
-          header.setAttribute('data-sort', ascending ? 'asc' : 'desc');
-          rows.sort((a, b) => {
-            const aVal = a.cells[index]?.textContent || '';
-            const bVal = b.cells[index]?.textContent || '';
-            return ascending ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
-          });
-          rows.forEach(row => tbody.appendChild(row));
-        });
-      });
-    }
-  </script>
+  <ExploreTable
+    dataUrl="/explore/hospitals.json"
+    linkPattern="/hospital/{0}/"
+    columns={[
+      { label: "Name", type: "link" },
+      { label: "CCN", type: "code" },
+      { label: "City" },
+      { label: "State" },
+      { label: "Type" },
+      { label: "Rating", type: "rating" },
+    ]}
+  />
 </BaseLayout>

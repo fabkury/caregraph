@@ -220,6 +220,9 @@ import BaseLayout from '../layouts/BaseLayout.astro';
       <option value="snf">SNFs</option>
       <option value="county">Counties</option>
       <option value="aco">ACOs</option>
+      <option value="drug">Drugs</option>
+      <option value="condition">Conditions</option>
+      <option value="drg">DRGs</option>
     </select>
 
     <div class="add-entity-wrapper">
@@ -303,6 +306,9 @@ import BaseLayout from '../layouts/BaseLayout.astro';
       snf: '/compare/snfs.json',
       county: '/compare/counties.json',
       aco: '/compare/acos.json',
+      drug: '/compare/drugs.json',
+      condition: '/compare/conditions.json',
+      drg: '/compare/drgs.json',
     };
 
     function entityPageUrl(type: string, id: string): string {
@@ -310,6 +316,9 @@ import BaseLayout from '../layouts/BaseLayout.astro';
       if (type === 'snf') return `/snf/${id}/`;
       if (type === 'county') return `/county/${id}/`;
       if (type === 'aco') return `/aco/${id}/`;
+      if (type === 'drug') return `/drug/${id}/`;
+      if (type === 'condition') return `/condition/${id}/`;
+      if (type === 'drg') return `/drg/${id}/`;
       return '#';
     }
 

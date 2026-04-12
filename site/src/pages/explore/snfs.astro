@@ -1,98 +1,32 @@
 ---
 import BaseLayout from '../../layouts/BaseLayout.astro';
+import ExploreTable from '../../components/ExploreTable.astro';
 import fs from 'node:fs';
 import path from 'node:path';
 
-const siteDataDir = path.resolve(process.cwd(), '..', 'site_data', 'snf');
-const snfs: Array<{ ccn: string; name: string; city: string; state: string; beds: number | null; rating: number | null }> = [];
-
-if (fs.existsSync(siteDataDir)) {
-  const files = fs.readdirSync(siteDataDir).filter((f: string) => f.endsWith('.json'));
-  for (const file of files) {
-    const m = JSON.parse(fs.readFileSync(path.join(siteDataDir, file), 'utf-8'));
-    const ratingVal = m.overall_rating && m.overall_rating !== 'Not Available' ? parseInt(m.overall_rating) : null;
-    snfs.push({
-      ccn: m.ccn,
-      name: m.provider_name,
-      city: m.city,
-      state: m.state,
-      beds: m.beds ?? null,
-      rating: isNaN(ratingVal as number) ? null : ratingVal,
-    });
-  }
+const indexPath = path.resolve(process.cwd(), 'public', 'explore', 'snfs.json');
+let count = 0;
+if (fs.existsSync(indexPath)) {
+  count = JSON.parse(fs.readFileSync(indexPath, 'utf-8')).length;
 }
-
-snfs.sort((a, b) => a.name.localeCompare(b.name));
 ---
 
 <BaseLayout title="SNFs" description="Browse all skilled nursing facilities on CareGraph">
   <div class="page-header">
     <h1>Skilled Nursing Facilities</h1>
-    <p class="subtitle">{snfs.length.toLocaleString()} SNFs</p>
+    <p class="subtitle">{count.toLocaleString()} SNFs</p>
   </div>
 
-  <div class="card">
-    <div style="overflow-x: auto;">
-      <table class="data-table" id="data-table">
-        <thead>
-          <tr>
-            <th>Name</th>
-            <th>CCN</th>
-            <th>City</th>
-            <th>State</th>
-            <th>Beds</th>
-            <th>Overall Rating</th>
-          </tr>
-        </thead>
-        <tbody>
-          {snfs.map(s => (
-            <tr>
-              <td><a href={`/snf/${s.ccn}/`}>{s.name}</a></td>
-              <td><code>{s.ccn}</code></td>
-              <td>{s.city}</td>
-              <td>{s.state}</td>
-              <td>{s.beds !== null ? s.beds : '\u2014'}</td>
-              <td>{s.rating !== null ? (
-                <span>
-                  <span class="star-rating">
-                    {[1,2,3,4,5].map(i => (
-                      <span class={i <= s.rating! ? 'star-filled' : 'star-empty'}>&#9733;</span>
-                    ))}
-                  </span>
-                </span>
-              ) : '\u2014'}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  </div>
-
-  <script>
-    const table = document.getElementById('data-table') as HTMLTableElement | null;
-    if (table) {
-      const headers = table.querySelectorAll('th');
-      headers.forEach((header, index) => {
-        header.addEventListener('click', () => {
-          const tbody = table.querySelector('tbody');
-          if (!tbody) return;
-          const rows = Array.from(tbody.querySelectorAll('tr'));
-          const ascending = header.getAttribute('data-sort') !== 'asc';
-          headers.forEach(h => h.removeAttribute('data-sort'));
-          header.setAttribute('data-sort', ascending ? 'asc' : 'desc');
-          rows.sort((a, b) => {
-            const aVal = a.cells[index]?.textContent || '';
-            const bVal = b.cells[index]?.textContent || '';
-            const aNum = parseFloat(aVal.replace(/[$,%]/g, ''));
-            const bNum = parseFloat(bVal.replace(/[$,%]/g, ''));
-            if (!isNaN(aNum) && !isNaN(bNum)) {
-              return ascending ? aNum - bNum : bNum - aNum;
-            }
-            return ascending ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
-          });
-          rows.forEach(row => tbody.appendChild(row));
-        });
-      });
-    }
-  </script>
+  <ExploreTable
+    dataUrl="/explore/snfs.json"
+    linkPattern="/snf/{0}/"
+    columns={[
+      { label: "Name", type: "link" },
+      { label: "CCN", type: "code" },
+      { label: "City" },
+      { label: "State" },
+      { label: "Beds", type: "number" },
+      { label: "Overall Rating", type: "rating" },
+    ]}
+  />
 </BaseLayout>

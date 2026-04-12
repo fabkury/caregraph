@@ -1,0 +1,30 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ExploreTable from '../../components/ExploreTable.astro';
+import fs from 'node:fs';
+import path from 'node:path';
+
+const indexPath = path.resolve(process.cwd(), 'public', 'explore', 'conditions.json');
+let count = 0;
+if (fs.existsSync(indexPath)) {
+  count = JSON.parse(fs.readFileSync(indexPath, 'utf-8')).length;
+}
+---
+
+<BaseLayout title="Conditions" description="Browse all health conditions on CareGraph">
+  <div class="page-header">
+    <h1>Health Conditions</h1>
+    <p class="subtitle">{count.toLocaleString()} conditions</p>
+  </div>
+
+  <ExploreTable
+    dataUrl="/explore/conditions.json"
+    linkPattern="/condition/{0}/"
+    columns={[
+      { label: "Condition ID", type: "link" },
+      { label: "Condition Name" },
+      { label: "Category" },
+      { label: "National Avg Prevalence", type: "percent" },
+    ]}
+  />
+</BaseLayout>

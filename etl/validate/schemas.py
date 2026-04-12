@@ -166,6 +166,95 @@ def validate_snf_manifest(manifest: dict[str, Any]) -> SnfManifest:
     return SnfManifest(**manifest)
 
 
+class DrugManifest(BaseModel):
+    """Schema for a drug entity page manifest."""
+    entity_type: str
+    drug_id: str
+    generic_name: str
+    brand_names: list[str] = []
+    data: dict[str, Any]
+    provenance: list[ProvenanceEntry]
+    related: list[Any] | None = None
+
+    @field_validator("drug_id")
+    @classmethod
+    def drug_id_not_empty(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("drug_id must not be empty")
+        return v
+
+    @field_validator("entity_type")
+    @classmethod
+    def entity_type_must_be_drug(cls, v: str) -> str:
+        if v != "drug":
+            raise ValueError(f"entity_type must be 'drug', got '{v}'")
+        return v
+
+
+class ConditionManifest(BaseModel):
+    """Schema for a condition entity page manifest."""
+    entity_type: str
+    condition_id: str
+    condition_name: str
+    category: str = ""
+    data: dict[str, Any]
+    provenance: list[ProvenanceEntry]
+    related: list[Any] | None = None
+
+    @field_validator("condition_id")
+    @classmethod
+    def condition_id_not_empty(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("condition_id must not be empty")
+        return v
+
+    @field_validator("entity_type")
+    @classmethod
+    def entity_type_must_be_condition(cls, v: str) -> str:
+        if v != "condition":
+            raise ValueError(f"entity_type must be 'condition', got '{v}'")
+        return v
+
+
+class DrgManifest(BaseModel):
+    """Schema for a DRG (Diagnosis-Related Group) entity page manifest."""
+    entity_type: str
+    drg_code: str
+    drg_description: str = ""
+    data: dict[str, Any]
+    provenance: list[ProvenanceEntry]
+    related: list[Any] | None = None
+
+    @field_validator("drg_code")
+    @classmethod
+    def drg_code_not_empty(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("drg_code must not be empty")
+        return v
+
+    @field_validator("entity_type")
+    @classmethod
+    def entity_type_must_be_drg(cls, v: str) -> str:
+        if v != "drg":
+            raise ValueError(f"entity_type must be 'drg', got '{v}'")
+        return v
+
+
 def validate_aco_manifest(manifest: dict[str, Any]) -> AcoManifest:
     """Validate an ACO manifest. Raises ValidationError on failure."""
     return AcoManifest(**manifest)
+
+
+def validate_drug_manifest(manifest: dict[str, Any]) -> DrugManifest:
+    """Validate a drug manifest. Raises ValidationError on failure."""
+    return DrugManifest(**manifest)
+
+
+def validate_condition_manifest(manifest: dict[str, Any]) -> ConditionManifest:
+    """Validate a condition manifest. Raises ValidationError on failure."""
+    return ConditionManifest(**manifest)
+
+
+def validate_drg_manifest(manifest: dict[str, Any]) -> DrgManifest:
+    """Validate a DRG manifest. Raises ValidationError on failure."""
+    return DrgManifest(**manifest)

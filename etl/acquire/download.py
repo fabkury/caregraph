@@ -81,6 +81,35 @@ DATASETS: dict[str, dict] = {
         "csv_url": None,  # No direct CSV; use SODA API
         "api_url": "https://data.cdc.gov/resource/swc5-untb.csv",
     },
+    # ── M5 datasets ─────────────────────────────────────────────────
+    "partd-drug-spending": {
+        "name": "Medicare Part D Spending by Drug",
+        "entity": "drug",
+        "api_type": "data-api",
+        "csv_url": "https://data.cms.gov/sites/default/files/2025-05/56d95a8b-138c-4b60-84a5-613fbab7197f/DSD_PTD_RY25_P04_V10_DY23_BGM.csv",
+        "api_url": "https://data.cms.gov/data-api/v1/dataset/7e0b4365-fd63-4a29-8f5e-e0ac9f66a81b/data",
+    },
+    "partb-drug-spending": {
+        "name": "Medicare Part B Spending by Drug",
+        "entity": "drug",
+        "api_type": "data-api",
+        "csv_url": "https://data.cms.gov/sites/default/files/2025-05/f52d5fcd-8d93-481d-9173-6219813e4efb/DSD_PTB_RY25_P06_V10_DYT23_HCPCS-%20250430.csv",
+        "api_url": "https://data.cms.gov/data-api/v1/dataset/76a714ad-3a2c-43ac-b76d-9dadf8f7d890/data",
+    },
+    "partb-discarded-units": {
+        "name": "Medicare Part B Discarded Drug Units",
+        "entity": "drug",
+        "api_type": "data-api",
+        "csv_url": "https://data.cms.gov/sites/default/files/2025-05/201381fe-e6a9-413c-8e52-636f28796d5e/DW_R25_P04_V10_DY23_HCPCS-%20250505.csv",
+        "api_url": "https://data.cms.gov/data-api/v1/dataset/09fd71b8-eb3e-45af-a01e-f8ab5a190e84/data",
+    },
+    "inpatient-by-drg": {
+        "name": "Medicare Inpatient Hospitals by Provider and Service (DRG)",
+        "entity": "drg",
+        "api_type": "data-api",
+        "csv_url": "https://data.cms.gov/sites/default/files/2025-05/ca1c9013-8c7c-4560-a4a1-28cf7e43ccc8/MUP_INP_RY25_P03_V10_DY23_PrvSvc.CSV",
+        "api_url": "https://data.cms.gov/data-api/v1/dataset/690ddc6c-2767-4618-b277-420ffb2bf27c/data",
+    },
 }
 
 # Page sizes for paginated API fallbacks

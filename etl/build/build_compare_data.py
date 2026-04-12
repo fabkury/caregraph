@@ -6,6 +6,9 @@ Reads all entity manifests and extracts flat summary records:
   - site_data/compare/snfs.json
   - site_data/compare/counties.json
   - site_data/compare/acos.json
+  - site_data/compare/drugs.json
+  - site_data/compare/conditions.json
+  - site_data/compare/drgs.json
 
 Each file is an array of objects with key fields for comparison.
 """
@@ -164,6 +167,91 @@ def _build_acos(aco_dir: Path) -> list[dict]:
     return records
 
 
+def _build_drugs(drug_dir: Path) -> list[dict]:
+    records = []
+    for f in sorted(drug_dir.glob("*.json")):
+        try:
+            m = json.loads(f.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            continue
+
+        partd = m.get("data", {}).get("partd_spending", {}).get("metrics", {})
+        partb = m.get("data", {}).get("partb_spending", {}).get("metrics", {})
+
+        def metric_val(metrics: dict, key: str) -> float | None:
+            v = metrics.get(key, {}).get("value")
+            return round(v, 2) if v is not None else None
+
+        brand_names = m.get("brand_names", [])
+        records.append({
+            "id": m.get("drug_id", ""),
+            "name": m.get("generic_name", ""),
+            "brand_names": ", ".join(brand_names[:3]),
+            "partd_spending": metric_val(partd, "total_spending"),
+            "partd_claims": _safe_int(partd.get("total_claims", {}).get("value")),
+            "partd_beneficiaries": _safe_int(partd.get("total_beneficiaries", {}).get("value")),
+            "avg_spend_per_unit": metric_val(partd, "avg_spend_per_dosage_unit"),
+            "partb_spending": metric_val(partb, "total_spending") if partb else None,
+        })
+
+    return records
+
+
+def _build_conditions(condition_dir: Path) -> list[dict]:
+    records = []
+    for f in sorted(condition_dir.glob("*.json")):
+        try:
+            m = json.loads(f.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            continue
+
+        places = m.get("data", {}).get("places", {})
+        min_county = places.get("min_county", {})
+        max_county = places.get("max_county", {})
+
+        records.append({
+            "id": m.get("condition_id", ""),
+            "name": m.get("condition_name", ""),
+            "category": m.get("category", ""),
+            "national_avg": places.get("national_avg"),
+            "min_value": min_county.get("value"),
+            "max_value": max_county.get("value"),
+            "total_counties": places.get("total_counties"),
+        })
+
+    return records
+
+
+def _build_drgs(drg_dir: Path) -> list[dict]:
+    records = []
+    for f in sorted(drg_dir.glob("*.json")):
+        try:
+            m = json.loads(f.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            continue
+
+        metrics = m.get("data", {}).get("inpatient", {}).get("metrics", {})
+        payment_range = m.get("data", {}).get("inpatient", {}).get("payment_range", {})
+
+        def metric_val(key: str) -> float | None:
+            v = metrics.get(key, {}).get("value")
+            return round(v, 2) if v is not None else None
+
+        records.append({
+            "id": m.get("drg_code", ""),
+            "name": m.get("drg_description", ""),
+            "total_discharges": _safe_int(metrics.get("total_discharges", {}).get("value")),
+            "avg_medicare_payment": metric_val("avg_medicare_payment"),
+            "avg_total_payment": metric_val("avg_total_payment"),
+            "avg_covered_charge": metric_val("avg_covered_charge"),
+            "hospital_count": _safe_int(metrics.get("hospital_count", {}).get("value")),
+            "payment_min": payment_range.get("min"),
+            "payment_max": payment_range.get("max"),
+        })
+
+    return records
+
+
 def build_compare_data(site_data_dir: Path, compare_out_dir: Path) -> dict[str, int]:
     """
     Build compare summary files for all entity types.
@@ -177,6 +265,9 @@ def build_compare_data(site_data_dir: Path, compare_out_dir: Path) -> dict[str, 
         "snfs": (_build_snfs, site_data_dir / "snf"),
         "counties": (_build_counties, site_data_dir / "county"),
         "acos": (_build_acos, site_data_dir / "aco"),
+        "drugs": (_build_drugs, site_data_dir / "drug"),
+        "conditions": (_build_conditions, site_data_dir / "condition"),
+        "drgs": (_build_drgs, site_data_dir / "drg"),
     }
 
     counts: dict[str, int] = {}

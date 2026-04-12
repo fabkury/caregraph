@@ -1,0 +1,432 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import fs from 'node:fs';
+import path from 'node:path';
+
+export function getStaticPaths() {
+  const siteDataDir = path.resolve(process.cwd(), '..', 'site_data', 'drug');
+  const paths: Array<{ params: { id: string }; props: { manifest: any } }> = [];
+
+  if (!fs.existsSync(siteDataDir)) return paths;
+
+  const files = fs.readdirSync(siteDataDir).filter((f: string) => f.endsWith('.json'));
+  for (const file of files) {
+    const manifest = JSON.parse(fs.readFileSync(path.join(siteDataDir, file), 'utf-8'));
+    paths.push({
+      params: { id: manifest.drug_id },
+      props: { manifest },
+    });
+  }
+
+  return paths;
+}
+
+const { manifest } = Astro.props;
+const { id } = Astro.params;
+
+const genericName = manifest.generic_name;
+const brandNames = manifest.brand_names || [];
+const partdMetrics = manifest.data?.partd_spending?.metrics || {};
+const partdRaw = manifest.data?.partd_spending?.raw || {};
+const partbSpending = manifest.data?.partb_spending;
+const discardedUnits = manifest.data?.discarded_units;
+
+function formatDollar(val: number | null): string {
+  if (val == null) return '\u2014';
+  return '$' + val.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function formatNumber(val: number | null): string {
+  if (val == null) return '\u2014';
+  return Math.round(val).toLocaleString();
+}
+
+function formatPercent(val: number | null): string {
+  if (val == null) return '\u2014';
+  return val.toFixed(1) + '%';
+}
+
+// Build CSV for download from Part D spending data
+const csvFields: string[] = ['drug_id', 'generic_name', 'brand_names'];
+const csvValues: string[] = [
+  `"${id}"`,
+  `"${genericName}"`,
+  `"${brandNames.join('; ')}"`,
+];
+for (const [key, m] of Object.entries(partdMetrics) as [string, any][]) {
+  csvFields.push(key);
+  csvValues.push(`"${m.value}"`);
+}
+const csvContent = csvFields.join(',') + '\n' + csvValues.join(',');
+const csvDataUri = `data:text/csv;charset=utf-8,${encodeURIComponent(csvContent)}`;
+
+const provenance = manifest.provenance?.[0];
+const related = manifest.related || [];
+
+function entityUrl(rel: { type: string; id: string }): string {
+  if (rel.type === 'county') return `/county/${rel.id}/`;
+  if (rel.type === 'hospital') return `/hospital/${rel.id}/`;
+  if (rel.type === 'snf') return `/snf/${rel.id}/`;
+  if (rel.type === 'aco') return `/aco/${rel.id}/`;
+  if (rel.type === 'drug') return `/drug/${rel.id}/`;
+  if (rel.type === 'condition') return `/condition/${rel.id}/`;
+  if (rel.type === 'drg') return `/drg/${rel.id}/`;
+  return '#';
+}
+
+function badgeClass(type: string): string {
+  return `badge badge-${type}`;
+}
+---
+
+<BaseLayout title={genericName} description={`${genericName} (Drug ID: ${id}) — Drug profile on CareGraph`}>
+  <div class="page-header">
+    <div style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
+      <span class="badge badge-drug">Drug</span>
+      <h1 style="margin: 0;">{genericName}</h1>
+    </div>
+    <p class="subtitle">
+      Drug ID: <code>{id}</code>
+      {brandNames.length > 0 && <span>&middot; Brand names: {brandNames.join(', ')}</span>}
+    </p>
+  </div>
+
+  <div class="actions-bar">
+    <div class="mode-toggle" id="mode-toggle">
+      <button class="active" data-mode="explore">Explore</button>
+      <button data-mode="table">Table</button>
+    </div>
+    <a href={csvDataUri} download={`drug_${id}_spending.csv`} class="btn">
+      Download CSV
+    </a>
+    <button class="btn" id="pin-btn" data-entity-type="drug" data-entity-id={id} data-entity-name={genericName}>
+      Pin to Workspace
+    </button>
+  </div>
+
+  <!-- Explore mode -->
+  <div id="explore-view">
+    <div class="card">
+      <h2>Overview</h2>
+      <dl class="kv-grid">
+        <dt>Generic Name</dt>
+        <dd>{genericName}</dd>
+        <dt>Brand Names</dt>
+        <dd>{brandNames.length > 0 ? brandNames.join(', ') : '\u2014'}</dd>
+      </dl>
+    </div>
+
+    <div class="card">
+      <h2>Part D Spending</h2>
+      <div class="metric-grid">
+        {partdMetrics.total_spending && (
+          <div class="metric-card">
+            <div class="label">{partdMetrics.total_spending.label}</div>
+            <div class="value">{formatDollar(partdMetrics.total_spending.value)}</div>
+          </div>
+        )}
+        {partdMetrics.total_claims && (
+          <div class="metric-card">
+            <div class="label">{partdMetrics.total_claims.label}</div>
+            <div class="value">{formatNumber(partdMetrics.total_claims.value)}</div>
+          </div>
+        )}
+        {partdMetrics.total_beneficiaries && (
+          <div class="metric-card">
+            <div class="label">{partdMetrics.total_beneficiaries.label}</div>
+            <div class="value">{formatNumber(partdMetrics.total_beneficiaries.value)}</div>
+          </div>
+        )}
+        {partdMetrics.avg_spend_per_dosage_unit && (
+          <div class="metric-card">
+            <div class="label">{partdMetrics.avg_spend_per_dosage_unit.label}</div>
+            <div class="value">{formatDollar(partdMetrics.avg_spend_per_dosage_unit.value)}</div>
+          </div>
+        )}
+        {partdMetrics.total_dosage_units && (
+          <div class="metric-card">
+            <div class="label">{partdMetrics.total_dosage_units.label}</div>
+            <div class="value">{formatNumber(partdMetrics.total_dosage_units.value)}</div>
+          </div>
+        )}
+      </div>
+    </div>
+
+    {partbSpending && (
+      <div class="card">
+        <h2>Part B Spending</h2>
+        <div class="metric-grid">
+          {partbSpending.metrics?.total_spending && (
+            <div class="metric-card">
+              <div class="label">{partbSpending.metrics.total_spending.label}</div>
+              <div class="value">{formatDollar(partbSpending.metrics.total_spending.value)}</div>
+            </div>
+          )}
+          {partbSpending.metrics?.total_claims && (
+            <div class="metric-card">
+              <div class="label">{partbSpending.metrics.total_claims.label}</div>
+              <div class="value">{formatNumber(partbSpending.metrics.total_claims.value)}</div>
+            </div>
+          )}
+        </div>
+        {partbSpending.hcpcs_codes && partbSpending.hcpcs_codes.length > 0 && (
+          <div style="margin-top: 1rem;">
+            <h3 style="font-size: 1rem; margin-bottom: 0.5rem;">HCPCS Codes</h3>
+            <div style="overflow-x: auto;">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Code</th>
+                    <th>Description</th>
+                    <th style="text-align: right;">Spending</th>
+                    <th style="text-align: right;">Claims</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {partbSpending.hcpcs_codes.map((hcpcs: any) => (
+                    <tr>
+                      <td><code>{hcpcs.code}</code></td>
+                      <td>{hcpcs.description}</td>
+                      <td style="text-align: right;">{formatDollar(hcpcs.spending)}</td>
+                      <td style="text-align: right;">{formatNumber(hcpcs.claims)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+      </div>
+    )}
+
+    {discardedUnits && (
+      <div class="card">
+        <h2>Discarded Units (Part B)</h2>
+        <div class="metric-grid">
+          {discardedUnits.metrics?.pct_discarded != null && (
+            <div class="metric-card">
+              <div class="label">{discardedUnits.metrics.pct_discarded.label}</div>
+              <div class="value">{formatPercent(discardedUnits.metrics.pct_discarded.value)}</div>
+            </div>
+          )}
+          {discardedUnits.metrics?.total_allowed_amount && (
+            <div class="metric-card">
+              <div class="label">{discardedUnits.metrics.total_allowed_amount.label}</div>
+              <div class="value">{formatDollar(discardedUnits.metrics.total_allowed_amount.value)}</div>
+            </div>
+          )}
+          {discardedUnits.metrics?.total_discarded_amount && (
+            <div class="metric-card">
+              <div class="label">{discardedUnits.metrics.total_discarded_amount.label}</div>
+              <div class="value">{formatDollar(discardedUnits.metrics.total_discarded_amount.value)}</div>
+            </div>
+          )}
+        </div>
+        {discardedUnits.details && discardedUnits.details.length > 0 && (
+          <div style="margin-top: 1rem;">
+            <h3 style="font-size: 1rem; margin-bottom: 0.5rem;">Details by HCPCS Code</h3>
+            <div style="overflow-x: auto;">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Code</th>
+                    <th>Brand Name</th>
+                    <th style="text-align: right;">Allowed Amount</th>
+                    <th style="text-align: right;">Discarded Amount</th>
+                    <th style="text-align: right;">% Discarded</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {discardedUnits.details.map((d: any) => (
+                    <tr>
+                      <td><code>{d.code}</code></td>
+                      <td>{d.brand_name || '\u2014'}</td>
+                      <td style="text-align: right;">{formatDollar(d.allowed_amount)}</td>
+                      <td style="text-align: right;">{formatDollar(d.discarded_amount)}</td>
+                      <td style="text-align: right;">{d.pct_discarded != null ? formatPercent(d.pct_discarded) : '\u2014'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+      </div>
+    )}
+
+    {Object.keys(partdMetrics).length === 0 && (
+      <div class="card">
+        <p style="color: var(--color-text-muted);">
+          No spending metrics available for this drug.
+        </p>
+      </div>
+    )}
+
+    {related.length > 0 && (
+      <div class="card">
+        <h2>Related Entities</h2>
+        <ul class="related-list">
+          {related.map((rel: any) => (
+            <li>
+              <span class={badgeClass(rel.type)}>{rel.type}</span>
+              <a href={entityUrl(rel)}>{rel.name}</a>
+              {rel.context && <span class="related-context">{rel.context}</span>}
+            </li>
+          ))}
+        </ul>
+      </div>
+    )}
+
+    <div class="methodology-stub">
+      <strong>Methodology</strong>
+      <p>
+        Data source: <strong>{provenance?.dataset_name}</strong>
+        (dataset ID: <code>{provenance?.dataset_id}</code>).
+        Vintage: {provenance?.vintage}.
+        Downloaded: {provenance?.download_date}.
+        Rows in source: {provenance?.row_count?.toLocaleString()}.
+      </p>
+      <p>
+        <em>Medicare Part D Spending by Drug</em> reports total spending, claims, and
+        beneficiaries for prescription drugs under the Medicare Part D program.
+        {partbSpending && ' Part B spending data covers drugs administered by physicians.'}
+        {discardedUnits && ' Discarded units data shows wastage of single-dose vial drugs.'}
+      </p>
+      <p>
+        <a href="/methodology/">Full methodology &rarr;</a>
+      </p>
+    </div>
+  </div>
+
+  <!-- Table mode -->
+  <div id="table-view" style="display: none;">
+    <div class="card">
+      <h2>Part D Spending Data</h2>
+      <div style="overflow-x: auto;">
+        <table class="data-table" id="data-table">
+          <thead>
+            <tr>
+              <th>Field</th>
+              <th>Value</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td style="font-weight: 500;">Drug ID</td>
+              <td>{id}</td>
+            </tr>
+            <tr>
+              <td style="font-weight: 500;">Generic Name</td>
+              <td>{genericName}</td>
+            </tr>
+            <tr>
+              <td style="font-weight: 500;">Brand Names</td>
+              <td>{brandNames.join(', ') || '\u2014'}</td>
+            </tr>
+            {Object.entries(partdMetrics).map(([key, m]: [string, any]) => (
+              <tr>
+                <td style="font-weight: 500;">{m.label}</td>
+                <td>{m.value != null ? m.value.toLocaleString() : '\u2014'}</td>
+              </tr>
+            ))}
+            {partdRaw.manufacturers && (
+              <tr>
+                <td style="font-weight: 500;">Manufacturers</td>
+                <td>{partdRaw.manufacturers.join(', ')}</td>
+              </tr>
+            )}
+            {partdRaw.outlier_flags && (
+              <tr>
+                <td style="font-weight: 500;">Outlier Flags</td>
+                <td>{partdRaw.outlier_flags.join(', ')}</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Mode toggle
+    const toggle = document.getElementById('mode-toggle');
+    const exploreView = document.getElementById('explore-view');
+    const tableView = document.getElementById('table-view');
+
+    if (toggle && exploreView && tableView) {
+      const buttons = toggle.querySelectorAll('button');
+      const savedMode = localStorage.getItem('caregraph-mode') || 'explore';
+      setMode(savedMode);
+
+      buttons.forEach(btn => {
+        btn.addEventListener('click', () => {
+          const mode = btn.getAttribute('data-mode') || 'explore';
+          setMode(mode);
+          localStorage.setItem('caregraph-mode', mode);
+        });
+      });
+
+      function setMode(mode: string) {
+        buttons.forEach(b => b.classList.toggle('active', b.getAttribute('data-mode') === mode));
+        exploreView!.style.display = mode === 'explore' ? '' : 'none';
+        tableView!.style.display = mode === 'table' ? '' : 'none';
+      }
+    }
+
+    // Simple table sorting
+    const table = document.getElementById('data-table') as HTMLTableElement | null;
+    if (table) {
+      const headers = table.querySelectorAll('th');
+      headers.forEach((header, index) => {
+        header.addEventListener('click', () => {
+          const tbody = table.querySelector('tbody');
+          if (!tbody) return;
+          const rows = Array.from(tbody.querySelectorAll('tr'));
+          const ascending = header.getAttribute('data-sort') !== 'asc';
+          header.setAttribute('data-sort', ascending ? 'asc' : 'desc');
+          rows.sort((a, b) => {
+            const aVal = a.cells[index]?.textContent || '';
+            const bVal = b.cells[index]?.textContent || '';
+            return ascending ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+          });
+          rows.forEach(row => tbody.appendChild(row));
+        });
+      });
+    }
+  </script>
+
+  <script>
+    import { isPinned, addPin, removePin } from '../../scripts/workspace';
+
+    const pinBtn = document.getElementById('pin-btn') as HTMLButtonElement | null;
+    if (pinBtn) {
+      const entityType = pinBtn.dataset.entityType!;
+      const entityId = pinBtn.dataset.entityId!;
+      const entityName = pinBtn.dataset.entityName!;
+
+      function updatePinLabel() {
+        if (!pinBtn) return;
+        if (isPinned(entityType, entityId)) {
+          pinBtn.textContent = 'Unpin from Workspace';
+          pinBtn.style.borderColor = 'var(--color-warning)';
+          pinBtn.style.color = 'var(--color-warning)';
+        } else {
+          pinBtn.textContent = 'Pin to Workspace';
+          pinBtn.style.borderColor = '';
+          pinBtn.style.color = '';
+        }
+      }
+
+      pinBtn.addEventListener('click', () => {
+        if (isPinned(entityType, entityId)) {
+          removePin(entityType, entityId);
+        } else {
+          addPin(entityType, entityId, entityName);
+        }
+        updatePinLabel();
+      });
+
+      updatePinLabel();
+    }
+  </script>
+</BaseLayout>

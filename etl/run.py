@@ -4,11 +4,12 @@ CareGraph ETL — Top-level orchestrator.
 Runs the full ETL pipeline:
   1. Acquire raw datasets from data.cms.gov and data.cdc.gov
   2. Build base entity page manifests (hospitals, counties, SNFs, ACOs)
-  3. Enrich entities (HRRP, HVBP, FIPS, CDC PLACES)
-  4. Build cross-links between entities
-  5. Build search index
-  6. Copy editorial output to site_data/editorial/
-  7. Write output index to site_data/
+  3. Build new entity manifests (drugs, conditions, DRGs)
+  4. Enrich entities (HRRP, HVBP, FIPS, CDC PLACES)
+  5. Build cross-links between entities
+  6. Build search index
+  7. Copy editorial output to site_data/editorial/
+  8. Write output index to site_data/
 
 Usage:
     python etl/run.py
@@ -32,18 +33,22 @@ from etl.build.build_hospitals import build_hospitals
 from etl.build.build_counties import build_counties
 from etl.build.build_snfs import build_snfs
 from etl.build.build_acos import build_acos
+from etl.build.build_drugs import build_drugs
+from etl.build.build_conditions import build_conditions
+from etl.build.build_drgs import build_drgs
 from etl.build.enrich_hospitals import enrich_hospitals
 from etl.build.enrich_counties import enrich_counties
 from etl.build.build_crosslinks import build_crosslinks
 from etl.build.build_search_index import build_search_index
 from etl.build.build_map_layers import build_map_layers
 from etl.build.build_compare_data import build_compare_data
+from etl.build.build_explore_indexes import build_explore_indexes
 
 
 def main() -> None:
     start = time.time()
     print("=" * 60)
-    print("CareGraph ETL — Phase 1–4 (M1 + M2 + M3 + M4)")
+    print("CareGraph ETL — Phase 1–5 (M1 + M2 + M3 + M4 + M5)")
     print("=" * 60)
 
     raw_dir = REPO_ROOT / "data" / "raw"
@@ -87,8 +92,28 @@ def main() -> None:
     aco_csv = downloaded["mssp-performance"]
     aco_count = build_acos(aco_csv, aco_out, today)
 
-    # ── Step 6: Enrich hospitals (HRRP + HVBP + FIPS) ──────────────
-    print("\n[Step 6] Enriching hospital manifests...")
+    # ── Step 6: Build drug manifests ──────────────────────────────────
+    print("\n[Step 6] Building drug page manifests...")
+    drug_out = site_data_dir / "drug"
+    partd_csv = downloaded["partd-drug-spending"]
+    partb_csv = downloaded["partb-drug-spending"]
+    discarded_csv = downloaded["partb-discarded-units"]
+    drug_count = build_drugs(partd_csv, partb_csv, discarded_csv, drug_out, today)
+
+    # ── Step 7: Build condition manifests ───────────────────────────
+    print("\n[Step 7] Building condition page manifests...")
+    condition_out = site_data_dir / "condition"
+    places_csv_for_conditions = downloaded["cdc-places"]
+    condition_count = build_conditions(places_csv_for_conditions, condition_out, today)
+
+    # ── Step 8: Build DRG manifests ─────────────────────────────────
+    print("\n[Step 8] Building DRG page manifests...")
+    drg_out = site_data_dir / "drg"
+    inpatient_csv = downloaded["inpatient-by-drg"]
+    drg_count = build_drgs(inpatient_csv, drg_out, today)
+
+    # ── Step 9: Enrich hospitals (HRRP + HVBP + FIPS) ──────────────
+    print("\n[Step 9] Enriching hospital manifests...")
     hrrp_csv = downloaded["hrrp"]
     hvbp_csv = downloaded["hvbp-tps"]
     hospital_enriched = enrich_hospitals(
@@ -99,8 +124,8 @@ def main() -> None:
         download_date=today,
     )
 
-    # ── Step 7: Enrich counties (CDC PLACES) ────────────────────────
-    print("\n[Step 7] Enriching county manifests with CDC PLACES...")
+    # ── Step 10: Enrich counties (CDC PLACES) ───────────────────────
+    print("\n[Step 10] Enriching county manifests with CDC PLACES...")
     places_csv = downloaded["cdc-places"]
     county_enriched = enrich_counties(
         county_dir=county_out,
@@ -108,16 +133,16 @@ def main() -> None:
         download_date=today,
     )
 
-    # ── Step 8: Build cross-links ───────────────────────────────────
-    print("\n[Step 8] Building cross-links between entities...")
+    # ── Step 11: Build cross-links ──────────────────────────────────
+    print("\n[Step 11] Building cross-links between entities...")
     crosslink_counts = build_crosslinks(site_data_dir)
 
-    # ── Step 9: Build search index ──────────────────────────────────
-    print("\n[Step 9] Building search index...")
+    # ── Step 12: Build search index ─────────────────────────────────
+    print("\n[Step 12] Building search index...")
     search_count = build_search_index(site_data_dir)
 
-    # ── Step 10: Copy editorial output to site_data ──────────────────
-    print("\n[Step 10] Copying editorial output to site_data/editorial/...")
+    # ── Step 13: Copy editorial output to site_data ─────────────────
+    print("\n[Step 13] Copying editorial output to site_data/editorial/...")
     editorial_src = REPO_ROOT / "etl" / "editorial" / "output"
     editorial_dst = site_data_dir / "editorial"
     editorial_dst.mkdir(parents=True, exist_ok=True)
@@ -128,18 +153,22 @@ def main() -> None:
             editorial_count += 1
     print(f"  -> Copied {editorial_count} editorial files to {editorial_dst}")
 
-    # ── Step 11: Build map layers ──────────────────────────────────
-    print("\n[Step 11] Building map layers for choropleth...")
+    # ── Step 14: Build map layers ───────────────────────────────────
+    print("\n[Step 14] Building map layers for choropleth...")
     map_out = site_data_dir / "map"
     map_counts = build_map_layers(county_out, map_out)
 
-    # ── Step 12: Build compare data ─────────────────────────────────
-    print("\n[Step 12] Building compare summary data...")
+    # ── Step 15: Build compare data ─────────────────────────────────
+    print("\n[Step 15] Building compare summary data...")
     compare_out = site_data_dir / "compare"
     compare_counts = build_compare_data(site_data_dir, compare_out)
 
-    # ── Step 13: Copy map layers and compare data to site/public/ ───
-    print("\n[Step 13] Copying map layers and compare data to site/public/...")
+    # ── Step 16: Build explore page indexes ─────────────────────────
+    print("\n[Step 16] Building explore page indexes...")
+    explore_counts = build_explore_indexes(site_data_dir)
+
+    # ── Step 17: Copy map layers, compare data, and explore indexes to site/public/ ───
+    print("\n[Step 17] Copying data to site/public/...")
     site_public = REPO_ROOT / "site" / "public"
 
     # Copy map layers
@@ -160,8 +189,19 @@ def main() -> None:
         compare_copied += 1
     print(f"  -> Copied {compare_copied} compare data files to {compare_public}")
 
-    # ── Step 14: Write manifest index ───────────────────────────────
-    print("\n[Step 14] Writing manifest index...")
+    # Copy explore indexes
+    explore_public = site_public / "explore"
+    explore_public.mkdir(parents=True, exist_ok=True)
+    explore_copied = 0
+    explore_src = site_data_dir / "explore"
+    if explore_src.exists():
+        for json_file in explore_src.glob("*.json"):
+            shutil.copy2(json_file, explore_public / json_file.name)
+            explore_copied += 1
+    print(f"  -> Copied {explore_copied} explore index files to {explore_public}")
+
+    # ── Step 18: Write manifest index ───────────────────────────────
+    print("\n[Step 18] Writing manifest index...")
     index = {
         "generated": today.isoformat(),
         "entities": {
@@ -193,6 +233,25 @@ def main() -> None:
                 "dataset": "MSSP ACO Performance PY2024",
                 "dataset_id": "mssp-performance",
             },
+            "drug": {
+                "count": drug_count,
+                "path": "drug/",
+                "dataset": "Medicare Part D Spending by Drug",
+                "dataset_id": "partd-drug-spending",
+                "enriched_with": ["partb-drug-spending", "partb-discarded-units"],
+            },
+            "condition": {
+                "count": condition_count,
+                "path": "condition/",
+                "dataset": "CDC PLACES County-Level Data",
+                "dataset_id": "cdc-places",
+            },
+            "drg": {
+                "count": drg_count,
+                "path": "drg/",
+                "dataset": "Medicare Inpatient Hospitals by Provider and Service (DRG)",
+                "dataset_id": "inpatient-by-drg",
+            },
         },
         "crosslinks": crosslink_counts,
         "search_index": {
@@ -201,6 +260,7 @@ def main() -> None:
         },
         "map_layers": map_counts,
         "compare_data": compare_counts,
+        "explore_indexes": explore_counts,
     }
     index_path = site_data_dir / "index.json"
     with open(index_path, "w", encoding="utf-8") as f:
@@ -211,15 +271,19 @@ def main() -> None:
     elapsed = time.time() - start
     print("\n" + "=" * 60)
     print(f"ETL complete in {elapsed:.1f}s")
-    print(f"  Hospitals: {hospital_count:,} manifests ({hospital_enriched} enriched)")
-    print(f"  Counties:  {county_count:,} manifests ({county_enriched} enriched)")
-    print(f"  SNFs:      {snf_count:,} manifests")
-    print(f"  ACOs:      {aco_count:,} manifests")
-    print(f"  Search:    {search_count:,} index entries")
-    print(f"  Editorial: {editorial_count} methodology pages")
+    print(f"  Hospitals:  {hospital_count:,} manifests ({hospital_enriched} enriched)")
+    print(f"  Counties:   {county_count:,} manifests ({county_enriched} enriched)")
+    print(f"  SNFs:       {snf_count:,} manifests")
+    print(f"  ACOs:       {aco_count:,} manifests")
+    print(f"  Drugs:      {drug_count:,} manifests")
+    print(f"  Conditions: {condition_count:,} manifests")
+    print(f"  DRGs:       {drg_count:,} manifests")
+    print(f"  Search:     {search_count:,} index entries")
+    print(f"  Editorial:  {editorial_count} methodology pages")
     print(f"  Map layers: {sum(map_counts.values()):,} total entries across {len(map_counts)} layers")
-    print(f"  Compare:   {sum(compare_counts.values()):,} total records across {len(compare_counts)} types")
-    print(f"  Output:    {site_data_dir}")
+    print(f"  Compare:    {sum(compare_counts.values()):,} total records across {len(compare_counts)} types")
+    print(f"  Explore:    {sum(explore_counts.values()):,} index rows across {len(explore_counts)} entities")
+    print(f"  Output:     {site_data_dir}")
     print("=" * 60)
 
 

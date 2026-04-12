@@ -60,18 +60,20 @@ test.describe('Home page', () => {
 // ---------------------------------------------------------------------------
 
 test.describe('Hospital browse page', () => {
-  test('lists hospitals with sortable table', async ({ page }) => {
+  test('lists hospitals with virtual-scrolled table', async ({ page }) => {
     await page.goto('/explore/hospitals/');
     await expect(page.locator('h1')).toHaveText('Hospitals');
-    // Should have rows in the table
-    const rows = page.locator('#data-table tbody tr');
-    await expect(rows.first()).toBeVisible();
-    expect(await rows.count()).toBeGreaterThan(100);
+    // Wait for virtual-scrolled data to load
+    const firstLink = page.locator('.data-table tbody td a').first();
+    await expect(firstLink).toBeVisible();
+    // Virtual scroll renders a window of rows (not all 5K)
+    const links = page.locator('.data-table tbody td a');
+    expect(await links.count()).toBeGreaterThan(10);
   });
 
   test('hospital name links to entity page', async ({ page }) => {
     await page.goto('/explore/hospitals/');
-    const firstLink = page.locator('#data-table tbody tr:first-child td:first-child a');
+    const firstLink = page.locator('.data-table tbody td a').first();
     await expect(firstLink).toBeVisible();
     const href = await firstLink.getAttribute('href');
     expect(href).toMatch(/^\/hospital\/[A-Za-z0-9]{6}\/$/);
@@ -79,14 +81,20 @@ test.describe('Hospital browse page', () => {
 
   test('clicking column header sorts the table', async ({ page }) => {
     await page.goto('/explore/hospitals/');
-    const stateHeader = page.locator('#data-table th', { hasText: 'State' });
+    // Wait for data to load
+    await expect(page.locator('.data-table tbody td a').first()).toBeVisible();
+    const stateHeader = page.locator('.data-table th', { hasText: 'State' });
+    const firstRowState = page.locator('.data-table tbody tr:nth-child(2) td:nth-child(4)');
+
+    // Sort ascending by State
     await stateHeader.click();
-    // After sorting by State ascending, first row state should be early alphabet
-    const firstState = await page.locator('#data-table tbody tr:first-child td:nth-child(4)').textContent();
+    await expect(stateHeader).toHaveAttribute('data-sort', 'asc');
+
+    // Sort descending — auto-retry waits for the rAF render to complete
     await stateHeader.click();
-    // After second click (descending), first row state should differ
-    const firstStateDesc = await page.locator('#data-table tbody tr:first-child td:nth-child(4)').textContent();
-    expect(firstState).not.toEqual(firstStateDesc);
+    await expect(stateHeader).toHaveAttribute('data-sort', 'desc');
+    // After descending sort, first state should NOT be "AK" (alphabetically last states come first)
+    await expect(firstRowState).not.toHaveText('AK');
   });
 });
 
@@ -98,13 +106,17 @@ test.describe('County browse page', () => {
   test('lists counties', async ({ page }) => {
     await page.goto('/explore/counties/');
     await expect(page.locator('h1')).toHaveText('Counties');
-    const rows = page.locator('#data-table tbody tr');
-    expect(await rows.count()).toBeGreaterThan(100);
+    // Wait for virtual-scrolled data to load
+    const firstLink = page.locator('.data-table tbody td a').first();
+    await expect(firstLink).toBeVisible();
+    const links = page.locator('.data-table tbody td a');
+    expect(await links.count()).toBeGreaterThan(10);
   });
 
   test('county name links to entity page', async ({ page }) => {
     await page.goto('/explore/counties/');
-    const firstLink = page.locator('#data-table tbody tr:first-child td:first-child a');
+    const firstLink = page.locator('.data-table tbody td a').first();
+    await expect(firstLink).toBeVisible();
     const href = await firstLink.getAttribute('href');
     expect(href).toMatch(/^\/county\/\d{5}\/$/);
   });
@@ -259,6 +271,108 @@ test.describe('County entity page', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Drug entity page
+// ---------------------------------------------------------------------------
+
+test.describe('Drug entity page', () => {
+  test('renders drug name', async ({ page }) => {
+    await page.goto('/drug/metformin-hcl/');
+    await expect(page.locator('h1')).toContainText('METFORMIN');
+    await expect(page.locator('.badge-drug')).toBeVisible();
+  });
+
+  test('shows spending metrics', async ({ page }) => {
+    await page.goto('/drug/metformin-hcl/');
+    await page.locator('#mode-toggle button[data-mode="explore"]').click();
+    const cards = page.locator('.metric-card');
+    expect(await cards.count()).toBeGreaterThan(0);
+  });
+
+  test('Explore/Table toggle works', async ({ page }) => {
+    await page.goto('/drug/metformin-hcl/');
+    await page.locator('#mode-toggle button[data-mode="table"]').click();
+    await expect(page.locator('#table-view')).toBeVisible();
+    await page.locator('#mode-toggle button[data-mode="explore"]').click();
+    await expect(page.locator('#explore-view')).toBeVisible();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Condition entity page
+// ---------------------------------------------------------------------------
+
+test.describe('Condition entity page', () => {
+  test('renders condition name', async ({ page }) => {
+    await page.goto('/condition/DIABETES/');
+    await expect(page.locator('h1')).not.toBeEmpty();
+    await expect(page.locator('.badge-condition')).toBeVisible();
+  });
+
+  test('shows prevalence and county tables', async ({ page }) => {
+    await page.goto('/condition/DIABETES/');
+    await page.locator('#mode-toggle button[data-mode="explore"]').click();
+    // Should have metric cards and county links
+    await expect(page.locator('.metric-card').first()).toBeVisible();
+    const countyLinks = page.locator('a[href*="/county/"]');
+    expect(await countyLinks.count()).toBeGreaterThan(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// DRG entity page
+// ---------------------------------------------------------------------------
+
+test.describe('DRG entity page', () => {
+  test('renders DRG code and description', async ({ page }) => {
+    await page.goto('/drg/470/');
+    await expect(page.locator('h1')).not.toBeEmpty();
+    await expect(page.locator('.badge-drg')).toBeVisible();
+    await expect(page.locator('.subtitle')).toContainText('470');
+  });
+
+  test('shows metrics and hospital links', async ({ page }) => {
+    await page.goto('/drg/470/');
+    await page.locator('#mode-toggle button[data-mode="explore"]').click();
+    const cards = page.locator('.metric-card');
+    expect(await cards.count()).toBeGreaterThan(3);
+    // Should have hospital links
+    const hospitalLinks = page.locator('a[href*="/hospital/"]');
+    expect(await hospitalLinks.count()).toBeGreaterThan(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Drug/Condition/DRG browse pages
+// ---------------------------------------------------------------------------
+
+test.describe('Drug browse page', () => {
+  test('lists drugs', async ({ page }) => {
+    await page.goto('/explore/drugs/');
+    await expect(page.locator('h1')).toContainText('Drugs');
+    const firstLink = page.locator('.data-table tbody td a').first();
+    await expect(firstLink).toBeVisible();
+  });
+});
+
+test.describe('Condition browse page', () => {
+  test('lists conditions', async ({ page }) => {
+    await page.goto('/explore/conditions/');
+    await expect(page.locator('h1')).toContainText('Conditions');
+    const firstLink = page.locator('.data-table tbody td a').first();
+    await expect(firstLink).toBeVisible();
+  });
+});
+
+test.describe('DRG browse page', () => {
+  test('lists DRGs', async ({ page }) => {
+    await page.goto('/explore/drgs/');
+    await expect(page.locator('h1')).toContainText('DRGs');
+    const firstLink = page.locator('.data-table tbody td a').first();
+    await expect(firstLink).toBeVisible();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // 404 handling
 // ---------------------------------------------------------------------------
 
@@ -272,16 +386,20 @@ test('nonexistent page returns 404', async ({ page }) => {
 // ---------------------------------------------------------------------------
 
 test.describe('SNF browse page', () => {
-  test('lists SNFs with sortable table', async ({ page }) => {
+  test('lists SNFs with virtual-scrolled table', async ({ page }) => {
     await page.goto('/explore/snfs/');
     await expect(page.locator('h1')).toHaveText('Skilled Nursing Facilities');
-    const rows = page.locator('#data-table tbody tr');
-    expect(await rows.count()).toBeGreaterThan(100);
+    // Wait for virtual-scrolled data to load
+    const firstLink = page.locator('.data-table tbody td a').first();
+    await expect(firstLink).toBeVisible();
+    const links = page.locator('.data-table tbody td a');
+    expect(await links.count()).toBeGreaterThan(10);
   });
 
   test('SNF name links to entity page', async ({ page }) => {
     await page.goto('/explore/snfs/');
-    const firstLink = page.locator('#data-table tbody tr:first-child td:first-child a');
+    const firstLink = page.locator('.data-table tbody td a').first();
+    await expect(firstLink).toBeVisible();
     const href = await firstLink.getAttribute('href');
     expect(href).toMatch(/^\/snf\/[A-Za-z0-9]{6}\/$/);
   });
@@ -295,13 +413,17 @@ test.describe('ACO browse page', () => {
   test('lists ACOs', async ({ page }) => {
     await page.goto('/explore/acos/');
     await expect(page.locator('h1')).toHaveText('Accountable Care Organizations');
-    const rows = page.locator('#data-table tbody tr');
-    expect(await rows.count()).toBeGreaterThan(50);
+    // Wait for virtual-scrolled data to load
+    const firstLink = page.locator('.data-table tbody td a').first();
+    await expect(firstLink).toBeVisible();
+    const links = page.locator('.data-table tbody td a');
+    expect(await links.count()).toBeGreaterThan(10);
   });
 
   test('ACO name links to entity page', async ({ page }) => {
     await page.goto('/explore/acos/');
-    const firstLink = page.locator('#data-table tbody tr:first-child td:first-child a');
+    const firstLink = page.locator('.data-table tbody td a').first();
+    await expect(firstLink).toBeVisible();
     const href = await firstLink.getAttribute('href');
     expect(href).toMatch(/^\/aco\/[A-Z0-9]+\/$/);
   });

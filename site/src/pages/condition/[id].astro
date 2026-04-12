@@ -1,0 +1,384 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import fs from 'node:fs';
+import path from 'node:path';
+
+export function getStaticPaths() {
+  const siteDataDir = path.resolve(process.cwd(), '..', 'site_data', 'condition');
+  const paths: Array<{ params: { id: string }; props: { manifest: any } }> = [];
+
+  if (!fs.existsSync(siteDataDir)) return paths;
+
+  const files = fs.readdirSync(siteDataDir).filter((f: string) => f.endsWith('.json'));
+  for (const file of files) {
+    const manifest = JSON.parse(fs.readFileSync(path.join(siteDataDir, file), 'utf-8'));
+    paths.push({
+      params: { id: manifest.condition_id },
+      props: { manifest },
+    });
+  }
+
+  return paths;
+}
+
+const { manifest } = Astro.props;
+const { id } = Astro.params;
+
+const conditionName = manifest.condition_name;
+const category = manifest.category;
+const places = manifest.data?.places || {};
+const nationalAvg = places.national_avg;
+const topCounties = places.top_counties || [];
+const bottomCounties = places.bottom_counties || [];
+const minCounty = places.min_county;
+const maxCounty = places.max_county;
+const totalCounties = places.total_counties || 0;
+
+function formatPercent(val: number | null): string {
+  if (val == null) return '\u2014';
+  return val.toFixed(1) + '%';
+}
+
+// Build CSV for download
+const csvHeaders = ['condition_id', 'condition_name', 'category', 'national_avg', 'total_counties', 'min_county_fips', 'min_county_name', 'min_value', 'max_county_fips', 'max_county_name', 'max_value'];
+const csvRow = [
+  `"${id}"`,
+  `"${conditionName}"`,
+  `"${category}"`,
+  nationalAvg,
+  totalCounties,
+  `"${minCounty?.fips || ''}"`,
+  `"${minCounty?.name || ''}, ${minCounty?.state || ''}"`,
+  minCounty?.value ?? '',
+  `"${maxCounty?.fips || ''}"`,
+  `"${maxCounty?.name || ''}, ${maxCounty?.state || ''}"`,
+  maxCounty?.value ?? '',
+];
+const csvContent = csvHeaders.join(',') + '\n' + csvRow.join(',');
+const csvDataUri = `data:text/csv;charset=utf-8,${encodeURIComponent(csvContent)}`;
+
+const provenance = manifest.provenance?.[0];
+const related = manifest.related || [];
+
+function entityUrl(rel: { type: string; id: string }): string {
+  if (rel.type === 'county') return `/county/${rel.id}/`;
+  if (rel.type === 'hospital') return `/hospital/${rel.id}/`;
+  if (rel.type === 'snf') return `/snf/${rel.id}/`;
+  if (rel.type === 'aco') return `/aco/${rel.id}/`;
+  if (rel.type === 'drug') return `/drug/${rel.id}/`;
+  if (rel.type === 'condition') return `/condition/${rel.id}/`;
+  if (rel.type === 'drg') return `/drg/${rel.id}/`;
+  return '#';
+}
+
+function badgeClass(type: string): string {
+  return `badge badge-${type}`;
+}
+---
+
+<BaseLayout title={conditionName} description={`${conditionName} — Condition profile on CareGraph`}>
+  <div class="page-header">
+    <div style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
+      <span class="badge badge-condition">Condition</span>
+      <h1 style="margin: 0;">{conditionName}</h1>
+    </div>
+    <p class="subtitle">
+      Condition ID: <code>{id}</code>
+      {category && <span>&middot; Category: {category}</span>}
+    </p>
+  </div>
+
+  <div class="actions-bar">
+    <div class="mode-toggle" id="mode-toggle">
+      <button class="active" data-mode="explore">Explore</button>
+      <button data-mode="table">Table</button>
+    </div>
+    <a href={csvDataUri} download={`condition_${id}.csv`} class="btn">
+      Download CSV
+    </a>
+    <button class="btn" id="pin-btn" data-entity-type="condition" data-entity-id={id} data-entity-name={conditionName}>
+      Pin to Workspace
+    </button>
+  </div>
+
+  <!-- Explore mode -->
+  <div id="explore-view">
+    <div class="card">
+      <h2>National Average Prevalence</h2>
+      <div class="metric-grid">
+        <div class="metric-card" style="border-color: var(--color-primary-light);">
+          <div class="label">National Average</div>
+          <div class="value">{formatPercent(nationalAvg)}</div>
+        </div>
+        {category && (
+          <div class="metric-card">
+            <div class="label">Category</div>
+            <div class="value" style="font-size: 1.1rem;">{category}</div>
+          </div>
+        )}
+        <div class="metric-card">
+          <div class="label">Counties Reporting</div>
+          <div class="value">{totalCounties.toLocaleString()}</div>
+        </div>
+      </div>
+    </div>
+
+    {minCounty && maxCounty && (
+      <div class="card">
+        <h2>Prevalence Range</h2>
+        <div class="metric-grid">
+          <div class="metric-card">
+            <div class="label">Lowest Prevalence</div>
+            <div class="value">{formatPercent(minCounty.value)}</div>
+            <div style="font-size: 0.85rem; color: var(--color-text-muted); margin-top: 0.25rem;">
+              <a href={`/county/${minCounty.fips}/`}>{minCounty.name}, {minCounty.state}</a>
+            </div>
+          </div>
+          <div class="metric-card">
+            <div class="label">Highest Prevalence</div>
+            <div class="value">{formatPercent(maxCounty.value)}</div>
+            <div style="font-size: 0.85rem; color: var(--color-text-muted); margin-top: 0.25rem;">
+              <a href={`/county/${maxCounty.fips}/`}>{maxCounty.name}, {maxCounty.state}</a>
+            </div>
+          </div>
+        </div>
+      </div>
+    )}
+
+    {topCounties.length > 0 && (
+      <div class="card">
+        <h2>Top 10 Highest-Prevalence Counties</h2>
+        <div style="overflow-x: auto;">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Rank</th>
+                <th>County</th>
+                <th>State</th>
+                <th style="text-align: right;">Prevalence</th>
+              </tr>
+            </thead>
+            <tbody>
+              {topCounties.map((c: any, i: number) => (
+                <tr>
+                  <td>{i + 1}</td>
+                  <td><a href={`/county/${c.fips}/`}>{c.name}</a></td>
+                  <td>{c.state}</td>
+                  <td style="text-align: right;">{formatPercent(c.value)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    )}
+
+    {bottomCounties.length > 0 && (
+      <div class="card">
+        <h2>Top 10 Lowest-Prevalence Counties</h2>
+        <div style="overflow-x: auto;">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Rank</th>
+                <th>County</th>
+                <th>State</th>
+                <th style="text-align: right;">Prevalence</th>
+              </tr>
+            </thead>
+            <tbody>
+              {bottomCounties.map((c: any, i: number) => (
+                <tr>
+                  <td>{i + 1}</td>
+                  <td><a href={`/county/${c.fips}/`}>{c.name}</a></td>
+                  <td>{c.state}</td>
+                  <td style="text-align: right;">{formatPercent(c.value)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    )}
+
+    {related.length > 0 && (
+      <div class="card">
+        <h2>Related Entities</h2>
+        <ul class="related-list">
+          {related.map((rel: any) => (
+            <li>
+              <span class={badgeClass(rel.type)}>{rel.type}</span>
+              <a href={entityUrl(rel)}>{rel.name}</a>
+              {rel.context && <span class="related-context">{rel.context}</span>}
+            </li>
+          ))}
+        </ul>
+      </div>
+    )}
+
+    <div class="methodology-stub">
+      <strong>Methodology</strong>
+      <p>
+        Data source: <strong>{provenance?.dataset_name}</strong>
+        (dataset ID: <code>{provenance?.dataset_id}</code>).
+        Vintage: {provenance?.vintage}.
+        Downloaded: {provenance?.download_date}.
+        Rows in source: {provenance?.row_count?.toLocaleString()}.
+      </p>
+      <p>
+        <em>CDC PLACES</em> provides county-level prevalence estimates for chronic diseases,
+        health behaviors, and preventive services from the Behavioral Risk Factor Surveillance System (BRFSS).
+        Values represent model-based estimates of age-adjusted prevalence.
+      </p>
+      <p>
+        <a href="/methodology/">Full methodology &rarr;</a>
+      </p>
+    </div>
+  </div>
+
+  <!-- Table mode -->
+  <div id="table-view" style="display: none;">
+    <div class="card">
+      <h2>County-Level Data Summary</h2>
+      <div style="overflow-x: auto;">
+        <table class="data-table" id="data-table">
+          <thead>
+            <tr>
+              <th>Field</th>
+              <th>Value</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td style="font-weight: 500;">Condition ID</td>
+              <td>{id}</td>
+            </tr>
+            <tr>
+              <td style="font-weight: 500;">Condition Name</td>
+              <td>{conditionName}</td>
+            </tr>
+            <tr>
+              <td style="font-weight: 500;">Category</td>
+              <td>{category || '\u2014'}</td>
+            </tr>
+            <tr>
+              <td style="font-weight: 500;">National Average Prevalence</td>
+              <td>{formatPercent(nationalAvg)}</td>
+            </tr>
+            <tr>
+              <td style="font-weight: 500;">Total Counties Reporting</td>
+              <td>{totalCounties.toLocaleString()}</td>
+            </tr>
+            {minCounty && (
+              <tr>
+                <td style="font-weight: 500;">Lowest Prevalence</td>
+                <td>{formatPercent(minCounty.value)} ({minCounty.name}, {minCounty.state})</td>
+              </tr>
+            )}
+            {maxCounty && (
+              <tr>
+                <td style="font-weight: 500;">Highest Prevalence</td>
+                <td>{formatPercent(maxCounty.value)} ({maxCounty.name}, {maxCounty.state})</td>
+              </tr>
+            )}
+            {topCounties.map((c: any, i: number) => (
+              <tr>
+                <td style="font-weight: 500;">Top {i + 1} County</td>
+                <td>{c.name}, {c.state} — {formatPercent(c.value)}</td>
+              </tr>
+            ))}
+            {bottomCounties.map((c: any, i: number) => (
+              <tr>
+                <td style="font-weight: 500;">Bottom {i + 1} County</td>
+                <td>{c.name}, {c.state} — {formatPercent(c.value)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Mode toggle
+    const toggle = document.getElementById('mode-toggle');
+    const exploreView = document.getElementById('explore-view');
+    const tableView = document.getElementById('table-view');
+
+    if (toggle && exploreView && tableView) {
+      const buttons = toggle.querySelectorAll('button');
+      const savedMode = localStorage.getItem('caregraph-mode') || 'explore';
+      setMode(savedMode);
+
+      buttons.forEach(btn => {
+        btn.addEventListener('click', () => {
+          const mode = btn.getAttribute('data-mode') || 'explore';
+          setMode(mode);
+          localStorage.setItem('caregraph-mode', mode);
+        });
+      });
+
+      function setMode(mode: string) {
+        buttons.forEach(b => b.classList.toggle('active', b.getAttribute('data-mode') === mode));
+        exploreView!.style.display = mode === 'explore' ? '' : 'none';
+        tableView!.style.display = mode === 'table' ? '' : 'none';
+      }
+    }
+
+    // Simple table sorting
+    const table = document.getElementById('data-table') as HTMLTableElement | null;
+    if (table) {
+      const headers = table.querySelectorAll('th');
+      headers.forEach((header, index) => {
+        header.addEventListener('click', () => {
+          const tbody = table.querySelector('tbody');
+          if (!tbody) return;
+          const rows = Array.from(tbody.querySelectorAll('tr'));
+          const ascending = header.getAttribute('data-sort') !== 'asc';
+          header.setAttribute('data-sort', ascending ? 'asc' : 'desc');
+          rows.sort((a, b) => {
+            const aVal = a.cells[index]?.textContent || '';
+            const bVal = b.cells[index]?.textContent || '';
+            return ascending ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+          });
+          rows.forEach(row => tbody.appendChild(row));
+        });
+      });
+    }
+  </script>
+
+  <script>
+    import { isPinned, addPin, removePin } from '../../scripts/workspace';
+
+    const pinBtn = document.getElementById('pin-btn') as HTMLButtonElement | null;
+    if (pinBtn) {
+      const entityType = pinBtn.dataset.entityType!;
+      const entityId = pinBtn.dataset.entityId!;
+      const entityName = pinBtn.dataset.entityName!;
+
+      function updatePinLabel() {
+        if (!pinBtn) return;
+        if (isPinned(entityType, entityId)) {
+          pinBtn.textContent = 'Unpin from Workspace';
+          pinBtn.style.borderColor = 'var(--color-warning)';
+          pinBtn.style.color = 'var(--color-warning)';
+        } else {
+          pinBtn.textContent = 'Pin to Workspace';
+          pinBtn.style.borderColor = '';
+          pinBtn.style.color = '';
+        }
+      }
+
+      pinBtn.addEventListener('click', () => {
+        if (isPinned(entityType, entityId)) {
+          removePin(entityType, entityId);
+        } else {
+          addPin(entityType, entityId, entityName);
+        }
+        updatePinLabel();
+      });
+
+      updatePinLabel();
+    }
+  </script>
+</BaseLayout>

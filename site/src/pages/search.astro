@@ -26,6 +26,9 @@ import BaseLayout from '../layouts/BaseLayout.astro';
       snf: (id) => `/snf/${id}/`,
       county: (id) => `/county/${id}/`,
       aco: (id) => `/aco/${id}/`,
+      drug: (id) => `/drug/${id}/`,
+      condition: (id) => `/condition/${id}/`,
+      drg: (id) => `/drg/${id}/`,
     };
 
     const entityLabels: Record<string, string> = {
@@ -33,6 +36,9 @@ import BaseLayout from '../layouts/BaseLayout.astro';
       snf: 'Skilled Nursing Facilities',
       county: 'Counties',
       aco: 'Accountable Care Organizations',
+      drug: 'Drugs',
+      condition: 'Health Conditions',
+      drg: 'Diagnosis Related Groups',
     };
 
     interface SearchEntry {

@@ -1,0 +1,31 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ExploreTable from '../../components/ExploreTable.astro';
+import fs from 'node:fs';
+import path from 'node:path';
+
+const indexPath = path.resolve(process.cwd(), 'public', 'explore', 'drgs.json');
+let count = 0;
+if (fs.existsSync(indexPath)) {
+  count = JSON.parse(fs.readFileSync(indexPath, 'utf-8')).length;
+}
+---
+
+<BaseLayout title="DRGs" description="Browse all DRGs on CareGraph">
+  <div class="page-header">
+    <h1>Diagnosis Related Groups (DRGs)</h1>
+    <p class="subtitle">{count.toLocaleString()} DRGs</p>
+  </div>
+
+  <ExploreTable
+    dataUrl="/explore/drgs.json"
+    linkPattern="/drg/{0}/"
+    columns={[
+      { label: "DRG Code", type: "link" },
+      { label: "DRG Description" },
+      { label: "Total Discharges", type: "number" },
+      { label: "Avg Medicare Payment", type: "currency" },
+      { label: "Hospital Count", type: "number" },
+    ]}
+  />
+</BaseLayout>

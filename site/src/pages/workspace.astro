@@ -208,6 +208,9 @@ import BaseLayout from '../layouts/BaseLayout.astro';
       if (type === 'snf') return `/snf/${id}/`;
       if (type === 'county') return `/county/${id}/`;
       if (type === 'aco') return `/aco/${id}/`;
+      if (type === 'drug') return `/drug/${id}/`;
+      if (type === 'condition') return `/condition/${id}/`;
+      if (type === 'drg') return `/drg/${id}/`;
       return '#';
     }
 

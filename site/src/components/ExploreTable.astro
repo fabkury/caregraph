@@ -1,0 +1,354 @@
+---
+/**
+ * ExploreTable — Virtual-scrolled data table for explore pages.
+ *
+ * Fetches a compact JSON index at runtime and renders only the visible
+ * rows, keeping DOM size constant (~250 nodes) regardless of dataset size.
+ *
+ * Props:
+ *   dataUrl      — path to the JSON index (e.g. "/explore/hospitals.json")
+ *   columns      — array of { label, type? } column definitions
+ *   linkPattern  — URL pattern with {N} placeholders for column indices
+ *
+ * Column types:
+ *   link     — clickable link using linkPattern
+ *   code     — monospace <code> display
+ *   text     — plain text (default)
+ *   number   — right-aligned, numeric sort
+ *   currency — prepends $, right-aligned, numeric sort
+ *   percent  — appends %, right-aligned, numeric sort
+ *   rating   — 1-5 star display, numeric sort
+ */
+
+interface Column {
+  label: string;
+  type?: 'text' | 'code' | 'link' | 'number' | 'currency' | 'percent' | 'rating';
+}
+
+interface Props {
+  dataUrl: string;
+  columns: Column[];
+  linkPattern: string;
+}
+
+const { dataUrl, columns, linkPattern } = Astro.props;
+const colCount = columns.length;
+---
+
+<div
+  class="explore-table"
+  data-url={dataUrl}
+  data-cols={JSON.stringify(columns)}
+  data-link={linkPattern}
+>
+  <div class="explore-toolbar">
+    <input
+      type="text"
+      class="explore-filter"
+      placeholder="Filter by name, city, state..."
+      aria-label="Filter table"
+    />
+    <span class="explore-count"></span>
+  </div>
+  <div class="explore-scroll" tabindex="0" role="region" aria-label="Scrollable data table">
+    <table class="data-table">
+      <thead>
+        <tr>
+          {columns.map((col, i) => (
+            <th
+              data-col={i.toString()}
+              class={['number', 'currency', 'percent', 'rating'].includes(col.type || '') ? 'num' : ''}
+            >
+              {col.label}
+            </th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td colspan={colCount.toString()} class="explore-loading">Loading...</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<style is:global>
+  .explore-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 1rem;
+  }
+  .explore-filter {
+    flex: 1;
+    max-width: 400px;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    font-size: 0.9rem;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  .explore-filter:focus {
+    border-color: var(--color-primary-light);
+  }
+  .explore-count {
+    color: var(--color-text-muted);
+    font-size: 0.85rem;
+    white-space: nowrap;
+  }
+  .explore-scroll {
+    height: 70vh;
+    min-height: 300px;
+    overflow-y: auto;
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    background: var(--color-surface);
+  }
+  .explore-scroll table {
+    margin: 0;
+  }
+  .explore-scroll thead {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: var(--color-surface);
+  }
+  .explore-scroll thead th {
+    border-top: none;
+  }
+  .explore-loading {
+    text-align: center;
+    padding: 2rem !important;
+    color: var(--color-text-muted);
+  }
+  .explore-table .data-table .num {
+    text-align: right;
+  }
+  .explore-table .data-table tbody td {
+    white-space: nowrap;
+  }
+  .explore-table .data-table th[data-sort="asc"]::after {
+    content: " \25B2";
+    font-size: 0.7em;
+  }
+  .explore-table .data-table th[data-sort="desc"]::after {
+    content: " \25BC";
+    font-size: 0.7em;
+  }
+</style>
+
+<script>
+  document.querySelectorAll<HTMLElement>('.explore-table').forEach(initTable);
+
+  function initTable(root: HTMLElement) {
+    const config = {
+      url: root.dataset.url!,
+      cols: JSON.parse(root.dataset.cols!) as Array<{ label: string; type?: string }>,
+      link: root.dataset.link!,
+    };
+    const ROW_H = 40;
+    const BUFFER = 10;
+    let allData: any[][] = [];
+    let viewData: any[][] = [];
+    let sortCol = -1;
+    let sortAsc = true;
+    let rafPending = false;
+
+    const filterInput = root.querySelector('.explore-filter') as HTMLInputElement;
+    const countSpan = root.querySelector('.explore-count') as HTMLElement;
+    const scrollBox = root.querySelector('.explore-scroll') as HTMLElement;
+    const tbody = root.querySelector('tbody') as HTMLTableSectionElement;
+    const headers = root.querySelectorAll('th');
+    const colCount = config.cols.length;
+
+    // Determine which columns are filterable (text-like types)
+    const filterCols: number[] = [];
+    config.cols.forEach((c, i) => {
+      const t = c.type || 'text';
+      if (t === 'link' || t === 'text' || t === 'code') filterCols.push(i);
+    });
+
+    // Determine which columns sort numerically
+    const numericTypes = new Set(['number', 'currency', 'percent', 'rating']);
+
+    // ── Fetch data ──────────────────────────────────────────────────
+    fetch(config.url)
+      .then(r => r.json())
+      .then((data: any[][]) => {
+        allData = data;
+        viewData = data.slice();
+        updateCount();
+        scheduleRender();
+      })
+      .catch(() => {
+        tbody.innerHTML =
+          '<tr><td colspan="' + colCount + '" class="explore-loading">Failed to load data.</td></tr>';
+      });
+
+    // ── Filter ──────────────────────────────────────────────────────
+    let filterTimeout: ReturnType<typeof setTimeout>;
+    filterInput.addEventListener('input', () => {
+      clearTimeout(filterTimeout);
+      filterTimeout = setTimeout(() => applyFilter(filterInput.value), 150);
+    });
+
+    // ── Sort (click headers) ────────────────────────────────────────
+    headers.forEach(th => {
+      th.addEventListener('click', () => {
+        const col = parseInt(th.dataset.col!);
+        const asc = sortCol === col ? !sortAsc : true;
+        sortCol = col;
+        sortAsc = asc;
+        headers.forEach(h => h.removeAttribute('data-sort'));
+        th.setAttribute('data-sort', asc ? 'asc' : 'desc');
+        applySort();
+        scheduleRender();
+      });
+    });
+
+    // ── Scroll ──────────────────────────────────────────────────────
+    scrollBox.addEventListener('scroll', () => scheduleRender(), { passive: true });
+
+    // ── Resize ──────────────────────────────────────────────────────
+    window.addEventListener('resize', () => scheduleRender());
+
+    // ── Core logic ──────────────────────────────────────────────────
+    function scheduleRender() {
+      if (!rafPending) {
+        rafPending = true;
+        requestAnimationFrame(() => {
+          rafPending = false;
+          render();
+        });
+      }
+    }
+
+    function applyFilter(query: string) {
+      const q = query.toLowerCase().trim();
+      if (!q) {
+        viewData = allData.slice();
+      } else {
+        viewData = allData.filter(row =>
+          filterCols.some(i => String(row[i] ?? '').toLowerCase().includes(q)),
+        );
+      }
+      if (sortCol >= 0) applySort();
+      scrollBox.scrollTop = 0;
+      updateCount();
+      scheduleRender();
+    }
+
+    function applySort() {
+      const col = sortCol;
+      const asc = sortAsc;
+      const colType = config.cols[col]?.type || 'text';
+      const numeric = numericTypes.has(colType);
+      viewData.sort((a, b) => {
+        const av = a[col];
+        const bv = b[col];
+        if (av == null && bv == null) return 0;
+        if (av == null) return 1;
+        if (bv == null) return -1;
+        if (numeric) return asc ? av - bv : bv - av;
+        return asc
+          ? String(av).localeCompare(String(bv))
+          : String(bv).localeCompare(String(av));
+      });
+    }
+
+    function updateCount() {
+      const total = allData.length;
+      const filtered = viewData.length;
+      countSpan.textContent =
+        total === filtered
+          ? total.toLocaleString() + ' results'
+          : filtered.toLocaleString() + ' of ' + total.toLocaleString();
+    }
+
+    function render() {
+      const scrollTop = scrollBox.scrollTop;
+      const viewH = scrollBox.clientHeight;
+      const total = viewData.length;
+
+      if (total === 0) {
+        tbody.innerHTML =
+          '<tr><td colspan="' + colCount + '" class="explore-loading">No results found.</td></tr>';
+        return;
+      }
+
+      const start = Math.max(0, Math.floor(scrollTop / ROW_H) - BUFFER);
+      const end = Math.min(total, Math.ceil((scrollTop + viewH) / ROW_H) + BUFFER);
+      const topH = start * ROW_H;
+      const botH = Math.max(0, (total - end) * ROW_H);
+
+      let html =
+        '<tr><td colspan="' + colCount +
+        '" style="height:' + topH + 'px;padding:0;border:none"></td></tr>';
+
+      for (let i = start; i < end; i++) {
+        html += renderRow(viewData[i]);
+      }
+
+      html +=
+        '<tr><td colspan="' + colCount +
+        '" style="height:' + botH + 'px;padding:0;border:none"></td></tr>';
+
+      tbody.innerHTML = html;
+    }
+
+    function renderRow(row: any[]) {
+      let html = '<tr>';
+      for (let i = 0; i < colCount; i++) {
+        html += renderCell(row[i], config.cols[i].type || 'text', row);
+      }
+      return html + '</tr>';
+    }
+
+    function renderCell(val: any, type: string, row: any[]) {
+      const isNumType = numericTypes.has(type);
+      if (val == null) return '<td' + (isNumType ? ' class="num"' : '') + '>\u2014</td>';
+
+      switch (type) {
+        case 'link': {
+          const url = config.link.replace(
+            /\{(\d+)\}/g,
+            (_, n) => encodeURIComponent(row[parseInt(n)]),
+          );
+          return '<td><a href="' + esc(url) + '">' + esc(val) + '</a></td>';
+        }
+        case 'code':
+          return '<td><code>' + esc(val) + '</code></td>';
+        case 'number':
+          return '<td class="num">' + fmtNum(val) + '</td>';
+        case 'currency':
+          return '<td class="num">$' + fmtNum(val) + '</td>';
+        case 'percent':
+          return '<td class="num">' + fmtNum(val) + '%</td>';
+        case 'rating':
+          return '<td>' + renderStars(val) + '</td>';
+        default:
+          return '<td>' + esc(val) + '</td>';
+      }
+    }
+
+    function fmtNum(v: number) {
+      return Number(v).toLocaleString(undefined, { maximumFractionDigits: 2 });
+    }
+
+    function renderStars(n: number) {
+      let s = '<span class="star-rating">';
+      for (let i = 1; i <= 5; i++) {
+        s += '<span class="' + (i <= n ? 'star-filled' : 'star-empty') + '">&#9733;</span>';
+      }
+      return s + '</span>';
+    }
+
+    function esc(s: any) {
+      return String(s)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+  }
+</script>

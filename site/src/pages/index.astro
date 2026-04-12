@@ -9,10 +9,16 @@ let sampleHospital: any = null;
 let sampleCounty: any = null;
 let sampleSnf: any = null;
 let sampleAco: any = null;
+let sampleDrug: any = null;
+let sampleCondition: any = null;
+let sampleDrg: any = null;
 let hospitalCount = 0;
 let countyCount = 0;
 let snfCount = 0;
 let acoCount = 0;
+let drugCount = 0;
+let conditionCount = 0;
+let drgCount = 0;
 
 try {
   const indexPath = path.join(siteDataDir, 'index.json');
@@ -22,6 +28,9 @@ try {
     countyCount = index.entities?.county?.count ?? 0;
     snfCount = index.entities?.snf?.count ?? 0;
     acoCount = index.entities?.aco?.count ?? 0;
+    drugCount = index.entities?.drug?.count ?? 0;
+    conditionCount = index.entities?.condition?.count ?? 0;
+    drgCount = index.entities?.drg?.count ?? 0;
   }
 
   // Pick a sample hospital (first one alphabetically)
@@ -59,11 +68,38 @@ try {
       sampleAco = JSON.parse(fs.readFileSync(path.join(acoDir, files[0]), 'utf-8'));
     }
   }
+
+  // Pick a sample Drug
+  const drugDir = path.join(siteDataDir, 'drug');
+  if (fs.existsSync(drugDir)) {
+    const files = fs.readdirSync(drugDir).filter((f: string) => f.endsWith('.json')).sort();
+    if (files.length > 0) {
+      sampleDrug = JSON.parse(fs.readFileSync(path.join(drugDir, files[0]), 'utf-8'));
+    }
+  }
+
+  // Pick a sample Condition
+  const conditionDir = path.join(siteDataDir, 'condition');
+  if (fs.existsSync(conditionDir)) {
+    const files = fs.readdirSync(conditionDir).filter((f: string) => f.endsWith('.json')).sort();
+    if (files.length > 0) {
+      sampleCondition = JSON.parse(fs.readFileSync(path.join(conditionDir, files[0]), 'utf-8'));
+    }
+  }
+
+  // Pick a sample DRG
+  const drgDir = path.join(siteDataDir, 'drg');
+  if (fs.existsSync(drgDir)) {
+    const files = fs.readdirSync(drgDir).filter((f: string) => f.endsWith('.json')).sort();
+    if (files.length > 0) {
+      sampleDrg = JSON.parse(fs.readFileSync(path.join(drgDir, files[0]), 'utf-8'));
+    }
+  }
 } catch (e) {
   // site_data may not exist yet during initial dev
 }
 
-const totalEntities = hospitalCount + countyCount + snfCount + acoCount;
+const totalEntities = hospitalCount + countyCount + snfCount + acoCount + drugCount + conditionCount + drgCount;
 ---
 
 <BaseLayout title="Home">
@@ -80,7 +116,7 @@ const totalEntities = hospitalCount + countyCount + snfCount + acoCount;
       type="text"
       class="search-input"
       id="home-search"
-      placeholder="Search hospitals, SNFs, counties, ACOs..."
+      placeholder="Search hospitals, SNFs, counties, ACOs, drugs, conditions, DRGs..."
     />
     <p style="text-align: center; font-size: 0.8rem; color: var(--color-text-muted); margin-top: 0.5rem;">
       Press Enter to search {totalEntities.toLocaleString()} entities.
@@ -93,18 +129,20 @@ const totalEntities = hospitalCount + countyCount + snfCount + acoCount;
     <a class="entity-tile" href="/explore/snfs/">SNFs</a>
     <a class="entity-tile" href="/explore/counties/">Counties</a>
     <a class="entity-tile" href="/explore/acos/">ACOs</a>
+    <a class="entity-tile" href="/explore/drugs/">Drugs</a>
+    <a class="entity-tile" href="/explore/conditions/">Conditions</a>
+    <a class="entity-tile" href="/explore/drgs/">DRGs</a>
     <span class="entity-tile" style="opacity: 0.5; cursor: default;" title="Coming soon">Clinicians</span>
-    <span class="entity-tile" style="opacity: 0.5; cursor: default;" title="Coming soon">Drugs</span>
-    <span class="entity-tile" style="opacity: 0.5; cursor: default;" title="Coming soon">Conditions</span>
-    <span class="entity-tile" style="opacity: 0.5; cursor: default;" title="Coming soon">DRGs</span>
   </div>
 
-  {(sampleHospital || sampleCounty || sampleSnf || sampleAco) && (
+  {(sampleHospital || sampleCounty || sampleSnf || sampleAco || sampleDrug || sampleCondition || sampleDrg) && (
     <div class="card" style="margin-top: 2rem;">
       <h2>Sample pages</h2>
       <p style="color: var(--color-text-muted); font-size: 0.9rem; margin-bottom: 1rem;">
         {hospitalCount.toLocaleString()} hospitals, {snfCount.toLocaleString()} SNFs,
-        {countyCount.toLocaleString()} counties, and {acoCount.toLocaleString()} ACOs loaded.
+        {countyCount.toLocaleString()} counties, {acoCount.toLocaleString()} ACOs,
+        {drugCount.toLocaleString()} drugs, {conditionCount.toLocaleString()} conditions,
+        and {drgCount.toLocaleString()} DRGs loaded.
       </p>
       <ul style="list-style: none; padding: 0; display: flex; flex-wrap: wrap; gap: 0.75rem;">
         {sampleHospital && (
@@ -135,6 +173,27 @@ const totalEntities = hospitalCount + countyCount + snfCount + acoCount;
             </a>
           </li>
         )}
+        {sampleDrug && (
+          <li>
+            <a href={`/drug/${sampleDrug.drug_id}/`} class="btn btn-primary">
+              {sampleDrug.generic_name} ({sampleDrug.drug_id})
+            </a>
+          </li>
+        )}
+        {sampleCondition && (
+          <li>
+            <a href={`/condition/${sampleCondition.condition_id}/`} class="btn btn-primary">
+              {sampleCondition.condition_name} ({sampleCondition.condition_id})
+            </a>
+          </li>
+        )}
+        {sampleDrg && (
+          <li>
+            <a href={`/drg/${sampleDrg.drg_code}/`} class="btn btn-primary">
+              DRG {sampleDrg.drg_code}: {sampleDrg.drg_description?.slice(0, 50)}
+            </a>
+          </li>
+        )}
       </ul>
     </div>
   )}
@@ -144,7 +203,9 @@ const totalEntities = hospitalCount + countyCount + snfCount + acoCount;
     <p style="font-size: 0.9rem; color: var(--color-text-muted);">
       Current data sources: Hospital General Information, Hospital Readmissions Reduction Program,
       Hospital Value-Based Purchasing, Nursing Home Provider Info,
-      MSSP ACO Performance, Medicare Geographic Variation by County, CDC PLACES County-Level Data.
+      MSSP ACO Performance, Medicare Geographic Variation by County, CDC PLACES County-Level Data,
+      Medicare Part D Spending by Drug, Medicare Part B Spending by Drug, Medicare Part B Discarded Drug Units,
+      Medicare Inpatient Hospitals by Provider and Service (DRG).
       Last ETL run: {new Date().toISOString().slice(0, 10)}.
       <a href="#">Full vintage table (Methodology Hub) &rarr;</a>
     </p>

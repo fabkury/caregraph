@@ -4,8 +4,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 export function getStaticPaths() {
-  const siteDataDir = path.resolve(process.cwd(), '..', 'site_data', 'aco');
-  const paths: Array<{ params: { id: string }; props: { manifest: any } }> = [];
+  const siteDataDir = path.resolve(process.cwd(), '..', 'site_data', 'drg');
+  const paths: Array<{ params: { code: string }; props: { manifest: any } }> = [];
 
   if (!fs.existsSync(siteDataDir)) return paths;
 
@@ -13,7 +13,7 @@ export function getStaticPaths() {
   for (const file of files) {
     const manifest = JSON.parse(fs.readFileSync(path.join(siteDataDir, file), 'utf-8'));
     paths.push({
-      params: { id: manifest.aco_id },
+      params: { code: manifest.drg_code },
       props: { manifest },
     });
   }
@@ -22,40 +22,33 @@ export function getStaticPaths() {
 }
 
 const { manifest } = Astro.props;
-const { id } = Astro.params;
+const { code } = Astro.params;
 
-const name = manifest.aco_name;
-const track = manifest.current_track;
-const msspMetrics = manifest.data?.mssp_performance?.metrics || {};
-const rawData = manifest.data?.mssp_performance?.raw || {};
+const description = manifest.drg_description;
+const inpatient = manifest.data?.inpatient || {};
+const metrics = inpatient.metrics || {};
+const topHospitals = inpatient.top_hospitals || [];
+const paymentRange = inpatient.payment_range;
 
-// Key metrics to highlight
-const highlightMetrics = [
-  { key: 'N_AB', format: 'integer' },
-  { key: 'Sav_rate', format: 'percent' },
-  { key: 'QualScore', format: 'decimal' },
-  { key: 'Per_Capita_Exp_TOTAL_PY', format: 'dollar' },
-  { key: 'GenSaveLoss', format: 'dollar' },
-  { key: 'EarnSaveLoss', format: 'dollar' },
-  { key: 'UpdatedBnchmk', format: 'dollar' },
-];
+function formatDollar(val: number | null): string {
+  if (val == null) return '\u2014';
+  return '$' + val.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
 
-function formatValue(val: number, format: string): string {
-  if (format === 'dollar') return '$' + val.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 });
-  if (format === 'percent') return val.toFixed(2) + '%';
-  if (format === 'integer') return Math.round(val).toLocaleString();
-  return val.toFixed(2);
+function formatNumber(val: number | null): string {
+  if (val == null) return '\u2014';
+  return Math.round(val).toLocaleString();
 }
 
 // Build CSV for download
-const csvHeaders = Object.keys(rawData);
-const csvRow = csvHeaders.map((h: string) => `"${(String(rawData[h]) || '').replace(/"/g, '""')}"`);
-const csvContent = csvHeaders.join(',') + '\n' + csvRow.join(',');
+const csvHeaders = ['hospital_ccn', 'hospital_name', 'discharges', 'avg_payment'];
+const csvRows = topHospitals.map((h: any) =>
+  `"${h.ccn}","${(h.name || '').replace(/"/g, '""')}",${h.discharges},${h.avg_payment}`
+);
+const csvContent = csvHeaders.join(',') + '\n' + csvRows.join('\n');
 const csvDataUri = `data:text/csv;charset=utf-8,${encodeURIComponent(csvContent)}`;
 
 const provenance = manifest.provenance?.[0];
-
-// Related entities
 const related = manifest.related || [];
 
 function entityUrl(rel: { type: string; id: string }): string {
@@ -74,16 +67,14 @@ function badgeClass(type: string): string {
 }
 ---
 
-<BaseLayout title={name} description={`${name} (ACO ID: ${id}) — ACO profile on CareGraph`}>
+<BaseLayout title={`DRG ${code}`} description={`DRG ${code}: ${description} — DRG profile on CareGraph`}>
   <div class="page-header">
     <div style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
-      <span class="badge badge-aco">ACO</span>
-      <h1 style="margin: 0;">{name}</h1>
+      <span class="badge badge-drg">DRG</span>
+      <h1 style="margin: 0;">{description}</h1>
     </div>
     <p class="subtitle">
-      ACO ID: <code>{id}</code>
-      {track && <span>&middot; Track: {track}</span>}
-      {manifest.state && <span>&middot; {manifest.state}</span>}
+      DRG Code: <code>{code}</code>
     </p>
   </div>
 
@@ -92,10 +83,10 @@ function badgeClass(type: string): string {
       <button class="active" data-mode="explore">Explore</button>
       <button data-mode="table">Table</button>
     </div>
-    <a href={csvDataUri} download={`aco_${id}_mssp_performance.csv`} class="btn">
+    <a href={csvDataUri} download={`drg_${code}_hospitals.csv`} class="btn">
       Download CSV
     </a>
-    <button class="btn" id="pin-btn" data-entity-type="aco" data-entity-id={id} data-entity-name={name}>
+    <button class="btn" id="pin-btn" data-entity-type="drg" data-entity-id={code} data-entity-name={`DRG ${code}: ${description}`}>
       Pin to Workspace
     </button>
   </div>
@@ -103,45 +94,101 @@ function badgeClass(type: string): string {
   <!-- Explore mode -->
   <div id="explore-view">
     <div class="card">
-      <h2>MSSP Performance — Key Metrics</h2>
+      <h2>Key Metrics</h2>
       <div class="metric-grid">
-        {highlightMetrics.map(({ key, format }) => {
-          const m = msspMetrics[key];
-          if (!m) return null;
-          return (
-            <div class="metric-card">
-              <div class="label">{m.label}</div>
-              <div class="value">{formatValue(m.value, format)}</div>
-            </div>
-          );
-        })}
+        {metrics.total_discharges && (
+          <div class="metric-card">
+            <div class="label">{metrics.total_discharges.label}</div>
+            <div class="value">{formatNumber(metrics.total_discharges.value)}</div>
+          </div>
+        )}
+        {metrics.avg_medicare_payment && (
+          <div class="metric-card">
+            <div class="label">{metrics.avg_medicare_payment.label}</div>
+            <div class="value">{formatDollar(metrics.avg_medicare_payment.value)}</div>
+          </div>
+        )}
+        {metrics.avg_total_payment && (
+          <div class="metric-card">
+            <div class="label">{metrics.avg_total_payment.label}</div>
+            <div class="value">{formatDollar(metrics.avg_total_payment.value)}</div>
+          </div>
+        )}
+        {metrics.avg_covered_charge && (
+          <div class="metric-card">
+            <div class="label">{metrics.avg_covered_charge.label}</div>
+            <div class="value">{formatDollar(metrics.avg_covered_charge.value)}</div>
+          </div>
+        )}
+        {metrics.hospital_count && (
+          <div class="metric-card">
+            <div class="label">{metrics.hospital_count.label}</div>
+            <div class="value">{formatNumber(metrics.hospital_count.value)}</div>
+          </div>
+        )}
       </div>
     </div>
 
-    <div class="card">
-      <h2>Track Information</h2>
-      <dl class="kv-grid">
-        <dt>Current Track</dt>
-        <dd>{track || '\u2014'}</dd>
-        <dt>Agreement Type</dt>
-        <dd>{rawData.Agree_Type || '\u2014'}</dd>
-        <dt>Risk Model</dt>
-        <dd>{rawData.Risk_Model || '\u2014'}</dd>
-        <dt>Assignment Type</dt>
-        <dd>{rawData.Assign_Type || '\u2014'}</dd>
-        <dt>Start Date</dt>
-        <dd>{rawData.Current_Start_Date || '\u2014'}</dd>
-        <dt>Agreement Period</dt>
-        <dd>{rawData.Agreement_Period_Num || '\u2014'}</dd>
-        <dt>SNF Waiver</dt>
-        <dd>{rawData.SNF_Waiver === '1' ? 'Yes' : rawData.SNF_Waiver === '0' ? 'No' : '\u2014'}</dd>
-      </dl>
-    </div>
+    {paymentRange && (
+      <div class="card">
+        <h2>Payment Range (Avg Medicare Payment)</h2>
+        <div class="metric-grid">
+          <div class="metric-card">
+            <div class="label">Minimum</div>
+            <div class="value">{formatDollar(paymentRange.min)}</div>
+          </div>
+          <div class="metric-card">
+            <div class="label">25th Percentile</div>
+            <div class="value">{formatDollar(paymentRange.p25)}</div>
+          </div>
+          <div class="metric-card">
+            <div class="label">Median</div>
+            <div class="value">{formatDollar(paymentRange.median)}</div>
+          </div>
+          <div class="metric-card">
+            <div class="label">75th Percentile</div>
+            <div class="value">{formatDollar(paymentRange.p75)}</div>
+          </div>
+          <div class="metric-card">
+            <div class="label">Maximum</div>
+            <div class="value">{formatDollar(paymentRange.max)}</div>
+          </div>
+        </div>
+      </div>
+    )}
 
-    {Object.keys(msspMetrics).length === 0 && (
+    {topHospitals.length > 0 && (
+      <div class="card">
+        <h2>Top {topHospitals.length} Hospitals by Discharges</h2>
+        <div style="overflow-x: auto;">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Rank</th>
+                <th>Hospital</th>
+                <th style="text-align: right;">Discharges</th>
+                <th style="text-align: right;">Avg Medicare Payment</th>
+              </tr>
+            </thead>
+            <tbody>
+              {topHospitals.map((h: any, i: number) => (
+                <tr>
+                  <td>{i + 1}</td>
+                  <td><a href={`/hospital/${h.ccn}/`}>{h.name}</a></td>
+                  <td style="text-align: right;">{formatNumber(h.discharges)}</td>
+                  <td style="text-align: right;">{formatDollar(h.avg_payment)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    )}
+
+    {Object.keys(metrics).length === 0 && (
       <div class="card">
         <p style="color: var(--color-text-muted);">
-          No MSSP performance metrics available for this ACO.
+          No inpatient metrics available for this DRG.
         </p>
       </div>
     )}
@@ -171,9 +218,9 @@ function badgeClass(type: string): string {
         Rows in source: {provenance?.row_count?.toLocaleString()}.
       </p>
       <p>
-        <em>MSSP ACO Performance</em> reports financial and quality performance
-        for Accountable Care Organizations participating in the Medicare Shared Savings Program.
-        Savings/losses are calculated against risk-adjusted, regionally-weighted benchmarks.
+        <em>Medicare Inpatient Hospitals by Provider and Service</em> reports charges and payments
+        for hospital inpatient stays by DRG (Diagnosis Related Group). Payment amounts reflect what
+        Medicare actually paid, while covered charges are the hospital's list price before adjustments.
       </p>
       <p>
         <a href="/methodology/">Full methodology &rarr;</a>
@@ -184,20 +231,24 @@ function badgeClass(type: string): string {
   <!-- Table mode -->
   <div id="table-view" style="display: none;">
     <div class="card">
-      <h2>All MSSP Performance Fields</h2>
+      <h2>Top Hospitals for DRG {code}</h2>
       <div style="overflow-x: auto;">
         <table class="data-table" id="data-table">
           <thead>
             <tr>
-              <th>Field</th>
-              <th>Value</th>
+              <th>CCN</th>
+              <th>Hospital Name</th>
+              <th style="text-align: right;">Discharges</th>
+              <th style="text-align: right;">Avg Medicare Payment</th>
             </tr>
           </thead>
           <tbody>
-            {Object.entries(rawData).map(([key, value]) => (
+            {topHospitals.map((h: any) => (
               <tr>
-                <td style="font-weight: 500;">{key}</td>
-                <td>{value as string || '\u2014'}</td>
+                <td><code>{h.ccn}</code></td>
+                <td><a href={`/hospital/${h.ccn}/`}>{h.name}</a></td>
+                <td style="text-align: right;">{formatNumber(h.discharges)}</td>
+                <td style="text-align: right;">{formatDollar(h.avg_payment)}</td>
               </tr>
             ))}
           </tbody>

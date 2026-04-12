@@ -74,12 +74,62 @@ def _build_aco_entry(manifest: dict[str, Any], entity_id: str) -> dict[str, str]
     }
 
 
+def _build_drug_entry(manifest: dict[str, Any], entity_id: str) -> dict[str, str]:
+    """Build a search index entry for a drug."""
+    brand_names = manifest.get("brand_names", [])
+    secondary = ", ".join(brand_names[:5]) if brand_names else ""
+    if len(brand_names) > 5:
+        secondary += f" (+{len(brand_names) - 5} more)"
+    return {
+        "id": f"drug/{entity_id}",
+        "type": "drug",
+        "name": _clean(manifest.get("generic_name")),
+        "secondary": secondary,
+        "identifier": entity_id,
+    }
+
+
+def _build_condition_entry(manifest: dict[str, Any], entity_id: str) -> dict[str, str]:
+    """Build a search index entry for a condition."""
+    category = _clean(manifest.get("category"))
+    national_avg = manifest.get("data", {}).get("places", {}).get("national_avg")
+    secondary = category
+    if national_avg is not None:
+        secondary = f"{category} | Avg: {national_avg}%" if category else f"Avg: {national_avg}%"
+    return {
+        "id": f"condition/{entity_id}",
+        "type": "condition",
+        "name": _clean(manifest.get("condition_name")),
+        "secondary": secondary,
+        "identifier": entity_id,
+    }
+
+
+def _build_drg_entry(manifest: dict[str, Any], entity_id: str) -> dict[str, str]:
+    """Build a search index entry for a DRG."""
+    metrics = manifest.get("data", {}).get("inpatient", {}).get("metrics", {})
+    total_dschrgs = metrics.get("total_discharges", {}).get("value")
+    secondary = f"DRG {entity_id}"
+    if total_dschrgs is not None:
+        secondary += f" | {int(total_dschrgs):,} discharges"
+    return {
+        "id": f"drg/{entity_id}",
+        "type": "drg",
+        "name": _clean(manifest.get("drg_description")),
+        "secondary": secondary,
+        "identifier": entity_id,
+    }
+
+
 # Map entity types to their builder functions and name fields
 ENTITY_CONFIG = {
     "hospital": _build_hospital_entry,
     "snf": _build_snf_entry,
     "county": _build_county_entry,
     "aco": _build_aco_entry,
+    "drug": _build_drug_entry,
+    "condition": _build_condition_entry,
+    "drg": _build_drg_entry,
 }
 
 

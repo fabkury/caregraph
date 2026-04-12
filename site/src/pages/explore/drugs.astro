@@ -1,0 +1,31 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ExploreTable from '../../components/ExploreTable.astro';
+import fs from 'node:fs';
+import path from 'node:path';
+
+const indexPath = path.resolve(process.cwd(), 'public', 'explore', 'drugs.json');
+let count = 0;
+if (fs.existsSync(indexPath)) {
+  count = JSON.parse(fs.readFileSync(indexPath, 'utf-8')).length;
+}
+---
+
+<BaseLayout title="Drugs" description="Browse all drugs on CareGraph">
+  <div class="page-header">
+    <h1>Drugs</h1>
+    <p class="subtitle">{count.toLocaleString()} drugs</p>
+  </div>
+
+  <ExploreTable
+    dataUrl="/explore/drugs.json"
+    linkPattern="/drug/{0}/"
+    columns={[
+      { label: "Drug ID", type: "link" },
+      { label: "Generic Name" },
+      { label: "Brand Names" },
+      { label: "Total Spending", type: "currency" },
+      { label: "Total Claims", type: "number" },
+    ]}
+  />
+</BaseLayout>
