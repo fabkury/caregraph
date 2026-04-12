@@ -28,6 +28,8 @@ const name = manifest.aco_name;
 const track = manifest.current_track;
 const msspMetrics = manifest.data?.mssp_performance?.metrics || {};
 const rawData = manifest.data?.mssp_performance?.raw || {};
+const participants = manifest.data?.participants || null;
+const snfAffiliates = manifest.data?.snf_affiliates || null;
 
 // Key metrics to highlight
 const highlightMetrics = [
@@ -142,6 +144,83 @@ function badgeClass(type: string): string {
       <div class="card">
         <p style="color: var(--color-text-muted);">
           No MSSP performance metrics available for this ACO.
+        </p>
+      </div>
+    )}
+
+    {participants && participants.length > 0 && (
+      <div class="card">
+        <h2>Network Participants ({participants.length})</h2>
+        <div style="overflow-x: auto;">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Provider Name</th>
+                <th>Type</th>
+                <th>CCN</th>
+                <th>Start Date</th>
+              </tr>
+            </thead>
+            <tbody>
+              {participants.slice(0, 100).map((p: any) => (
+                <tr>
+                  <td style="font-weight: 500;">
+                    {p.ccn ? (
+                      <a href={`/hospital/${p.ccn}/`}>{p.provider_name || p.ccn}</a>
+                    ) : (
+                      p.provider_name || '\u2014'
+                    )}
+                  </td>
+                  <td>{p.provider_type || '\u2014'}</td>
+                  <td><code>{p.ccn || p.tin || '\u2014'}</code></td>
+                  <td>{p.start_date || '\u2014'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        {participants.length > 100 && (
+          <p style="font-size: 0.8rem; color: var(--color-text-muted); margin-top: 0.5rem;">
+            Showing 100 of {participants.length} participants. Use Table view for full data.
+          </p>
+        )}
+        <p style="font-size: 0.8rem; color: var(--color-text-muted); margin-top: 0.5rem;">
+          Providers participating in this ACO. Source: CMS ACO Participants.
+        </p>
+      </div>
+    )}
+
+    {snfAffiliates && snfAffiliates.length > 0 && (
+      <div class="card">
+        <h2>SNF Affiliates ({snfAffiliates.length})</h2>
+        <div style="overflow-x: auto;">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>SNF Name</th>
+                <th>CCN</th>
+                <th>State</th>
+              </tr>
+            </thead>
+            <tbody>
+              {snfAffiliates.map((a: any) => (
+                <tr>
+                  <td style="font-weight: 500;">
+                    {a.snf_ccn ? (
+                      <a href={`/snf/${a.snf_ccn}/`}>{a.snf_name || a.snf_ccn}</a>
+                    ) : (
+                      a.snf_name || '\u2014'
+                    )}
+                  </td>
+                  <td><code>{a.snf_ccn || '\u2014'}</code></td>
+                  <td>{a.state || '\u2014'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <p style="font-size: 0.8rem; color: var(--color-text-muted); margin-top: 0.5rem;">
+          Skilled Nursing Facilities affiliated with this ACO (3-day SNF waiver list). Source: CMS ACO SNF Affiliates.
         </p>
       </div>
     )}

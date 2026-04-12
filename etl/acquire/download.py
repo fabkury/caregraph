@@ -81,6 +81,86 @@ DATASETS: dict[str, dict] = {
         "csv_url": None,  # No direct CSV; use SODA API
         "api_url": "https://data.cdc.gov/resource/swc5-untb.csv",
     },
+    # ── Phase 1 hospital enrichment datasets ──────────────────────
+    "hosp-timely-care": {
+        "name": "Timely and Effective Care — Hospital",
+        "entity": "hospital",
+        "api_type": "provider-data",
+        "csv_url": None,
+        "api_url": "https://data.cms.gov/provider-data/api/1/datastore/query/yv7e-xc69/0",
+    },
+    "hosp-complications": {
+        "name": "Complications and Deaths — Hospital",
+        "entity": "hospital",
+        "api_type": "provider-data",
+        "csv_url": None,
+        "api_url": "https://data.cms.gov/provider-data/api/1/datastore/query/ynj2-r877/0",
+    },
+    "hosp-hcahps": {
+        "name": "Patient Survey (HCAHPS) — Hospital",
+        "entity": "hospital",
+        "api_type": "provider-data",
+        "csv_url": None,
+        "api_url": "https://data.cms.gov/provider-data/api/1/datastore/query/dgck-syfz/0",
+    },
+    "hosp-hai": {
+        "name": "Healthcare Associated Infections — Hospital",
+        "entity": "hospital",
+        "api_type": "provider-data",
+        "csv_url": None,
+        "api_url": "https://data.cms.gov/provider-data/api/1/datastore/query/77hc-ibv8/0",
+    },
+    "hosp-unplanned-visits": {
+        "name": "Unplanned Hospital Visits — Hospital",
+        "entity": "hospital",
+        "api_type": "provider-data",
+        "csv_url": None,
+        "api_url": "https://data.cms.gov/provider-data/api/1/datastore/query/632h-zaca/0",
+    },
+    "hosp-mspb": {
+        "name": "Medicare Spending Per Beneficiary — Hospital",
+        "entity": "hospital",
+        "api_type": "provider-data",
+        "csv_url": None,
+        "api_url": "https://data.cms.gov/provider-data/api/1/datastore/query/5hk7-b79m/0",
+    },
+    # ── Phase 2 SNF enrichment datasets ─────────────────────────
+    "nh-penalties": {
+        "name": "Nursing Home Penalties",
+        "entity": "snf",
+        "api_type": "provider-data",
+        "csv_url": None,
+        "api_url": "https://data.cms.gov/provider-data/api/1/datastore/query/g6vv-u9sr/0",
+    },
+    "nh-deficiencies": {
+        "name": "Nursing Home Health Deficiencies",
+        "entity": "snf",
+        "api_type": "provider-data",
+        "csv_url": None,
+        "api_url": "https://data.cms.gov/provider-data/api/1/datastore/query/r5ix-sfxw/0",
+    },
+    "nh-ownership": {
+        "name": "Nursing Home Ownership",
+        "entity": "snf",
+        "api_type": "provider-data",
+        "csv_url": None,
+        "api_url": "https://data.cms.gov/provider-data/api/1/datastore/query/y2hd-n93e/0",
+    },
+    # ── Phase 3 ACO cross-link datasets ─────────────────────────
+    "aco-participants": {
+        "name": "ACO Participants",
+        "entity": "aco",
+        "api_type": "data-api",
+        "csv_url": None,
+        "api_url": "https://data.cms.gov/data-api/v1/dataset/9767cb68-8ea9-4f0b-8179-9431abc89f11/data",
+    },
+    "aco-snf-affiliates": {
+        "name": "ACO SNF Affiliates",
+        "entity": "aco",
+        "api_type": "data-api",
+        "csv_url": None,
+        "api_url": "https://data.cms.gov/data-api/v1/dataset/5b227bd9-82d4-4145-86fd-809e02ca7f18/data",
+    },
     # ── M5 datasets ─────────────────────────────────────────────────
     "partd-drug-spending": {
         "name": "Medicare Part D Spending by Drug",

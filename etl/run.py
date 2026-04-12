@@ -5,7 +5,8 @@ Runs the full ETL pipeline:
   1. Acquire raw datasets from data.cms.gov and data.cdc.gov
   2. Build base entity page manifests (hospitals, counties, SNFs, ACOs)
   3. Build new entity manifests (drugs, conditions, DRGs)
-  4. Enrich entities (HRRP, HVBP, FIPS, CDC PLACES)
+  4. Enrich entities (HRRP, HVBP, FIPS, CDC PLACES, hospital quality,
+     SNF penalties/deficiencies/ownership, ACO participants/affiliates)
   5. Build cross-links between entities
   6. Build search index
   7. Copy editorial output to site_data/editorial/
@@ -37,6 +38,8 @@ from etl.build.build_drugs import build_drugs
 from etl.build.build_conditions import build_conditions
 from etl.build.build_drgs import build_drgs
 from etl.build.enrich_hospitals import enrich_hospitals
+from etl.build.enrich_snfs import enrich_snfs
+from etl.build.enrich_acos import enrich_acos
 from etl.build.enrich_counties import enrich_counties
 from etl.build.build_crosslinks import build_crosslinks
 from etl.build.build_search_index import build_search_index
@@ -112,7 +115,7 @@ def main() -> None:
     inpatient_csv = downloaded["inpatient-by-drg"]
     drg_count = build_drgs(inpatient_csv, drg_out, today)
 
-    # ── Step 9: Enrich hospitals (HRRP + HVBP + FIPS) ──────────────
+    # ── Step 9: Enrich hospitals (HRRP + HVBP + FIPS + Phase 1) ────
     print("\n[Step 9] Enriching hospital manifests...")
     hrrp_csv = downloaded["hrrp"]
     hvbp_csv = downloaded["hvbp-tps"]
@@ -122,6 +125,33 @@ def main() -> None:
         hrrp_csv_path=hrrp_csv,
         hvbp_csv_path=hvbp_csv,
         download_date=today,
+        timely_care_csv=downloaded.get("hosp-timely-care"),
+        complications_csv=downloaded.get("hosp-complications"),
+        hcahps_csv=downloaded.get("hosp-hcahps"),
+        hai_csv=downloaded.get("hosp-hai"),
+        unplanned_visits_csv=downloaded.get("hosp-unplanned-visits"),
+        mspb_csv=downloaded.get("hosp-mspb"),
+    )
+
+    # ── Step 9b: Enrich SNFs (penalties + deficiencies + ownership) ─
+    print("\n[Step 9b] Enriching SNF manifests...")
+    snf_enriched = enrich_snfs(
+        snf_dir=snf_out,
+        download_date=today,
+        penalties_csv=downloaded.get("nh-penalties"),
+        deficiencies_csv=downloaded.get("nh-deficiencies"),
+        ownership_csv=downloaded.get("nh-ownership"),
+    )
+
+    # ── Step 9c: Enrich ACOs (participants + SNF affiliates) ────────
+    print("\n[Step 9c] Enriching ACO manifests with participant cross-links...")
+    aco_enriched = enrich_acos(
+        aco_dir=aco_out,
+        hospital_dir=hospital_out,
+        snf_dir=snf_out,
+        download_date=today,
+        participants_csv=downloaded.get("aco-participants"),
+        snf_affiliates_csv=downloaded.get("aco-snf-affiliates"),
     )
 
     # ── Step 10: Enrich counties (CDC PLACES) ───────────────────────
@@ -210,7 +240,12 @@ def main() -> None:
                 "path": "hospital/",
                 "dataset": "Hospital General Information",
                 "dataset_id": "xubh-q36u",
-                "enriched_with": ["hrrp", "hvbp-tps"],
+                "enriched_with": [
+                    "hrrp", "hvbp-tps",
+                    "hosp-timely-care", "hosp-complications",
+                    "hosp-hcahps", "hosp-hai",
+                    "hosp-unplanned-visits", "hosp-mspb",
+                ],
                 "enriched_count": hospital_enriched,
             },
             "county": {
@@ -226,12 +261,20 @@ def main() -> None:
                 "path": "snf/",
                 "dataset": "Nursing Home Provider Info",
                 "dataset_id": "nh-provider-info",
+                "enriched_with": [
+                    "nh-penalties", "nh-deficiencies", "nh-ownership",
+                ],
+                "enriched_count": snf_enriched,
             },
             "aco": {
                 "count": aco_count,
                 "path": "aco/",
                 "dataset": "MSSP ACO Performance PY2024",
                 "dataset_id": "mssp-performance",
+                "enriched_with": [
+                    "aco-participants", "aco-snf-affiliates",
+                ],
+                "enriched_count": aco_enriched,
             },
             "drug": {
                 "count": drug_count,
@@ -273,8 +316,8 @@ def main() -> None:
     print(f"ETL complete in {elapsed:.1f}s")
     print(f"  Hospitals:  {hospital_count:,} manifests ({hospital_enriched} enriched)")
     print(f"  Counties:   {county_count:,} manifests ({county_enriched} enriched)")
-    print(f"  SNFs:       {snf_count:,} manifests")
-    print(f"  ACOs:       {aco_count:,} manifests")
+    print(f"  SNFs:       {snf_count:,} manifests ({snf_enriched} enriched)")
+    print(f"  ACOs:       {aco_count:,} manifests ({aco_enriched} enriched)")
     print(f"  Drugs:      {drug_count:,} manifests")
     print(f"  Conditions: {condition_count:,} manifests")
     print(f"  DRGs:       {drg_count:,} manifests")

@@ -1,10 +1,16 @@
 """
-Enrich hospital manifests with HRRP, HVBP, and FIPS data.
+Enrich hospital manifests with quality, safety, and cost data.
 
 Reads existing hospital manifests from site_data/hospital/ and joins:
   a) HRRP (Hospital Readmissions Reduction Program) — readmission measures
   b) HVBP TPS (Hospital Value-Based Purchasing) — total performance scores
   c) FIPS codes — derived from county manifests
+  d) Timely & Effective Care — process-of-care measures
+  e) Complications & Deaths — mortality and safety measures
+  f) HCAHPS — patient experience survey scores
+  g) Healthcare Associated Infections — infection rates
+  h) Unplanned Hospital Visits — readmission and ED return rates
+  i) Medicare Spending Per Beneficiary — cost efficiency
 
 Updated manifests are written back in place.
 """
@@ -289,14 +295,143 @@ def _load_hvbp(
     return result
 
 
+def _load_measures_by_ccn(
+    csv_path: Path,
+    dataset_label: str,
+) -> dict[str, list[dict[str, Any]]]:
+    """Generic loader for Provider Data quality-measure CSVs.
+
+    These datasets all share a structure: one row per facility per measure,
+    with a Facility ID column for the CCN.  We group rows by CCN and
+    extract all non-empty fields per row.
+
+    Returns {ccn: [row_dicts]}.
+    """
+    result: dict[str, list[dict[str, Any]]] = {}
+
+    with open(csv_path, encoding="utf-8", errors="replace") as f:
+        reader = csv.DictReader(f)
+        rows = list(reader)
+
+    if not rows:
+        return result
+
+    sample = rows[0]
+    col_ccn = _find_column(sample, [
+        "Facility ID", "Hospital CCN", "Provider Number",
+        "Facility Id", "Provider ID", "CCN",
+    ])
+
+    if col_ccn is None:
+        print(f"    [warn] Could not find CCN column in {dataset_label}")
+        return result
+
+    col_measure = _find_column(sample, [
+        "Measure ID", "Measure Name", "Measure name",
+        "HCAHPS Measure ID", "HAI Measure ID",
+        "Measure ID Number",
+    ])
+
+    for row in rows:
+        ccn = normalize_ccn(row.get(col_ccn, ""))
+        if ccn is None:
+            continue
+
+        row_data: dict[str, Any] = {}
+        for k, v in row.items():
+            if k == col_ccn:
+                continue
+            cleaned = _clean(v)
+            if cleaned and cleaned not in ("Not Available", "Not Applicable"):
+                # Try numeric conversion for value-like fields
+                num = _try_float(v)
+                if num is not None and k != col_measure:
+                    row_data[k] = num
+                else:
+                    row_data[k] = cleaned
+
+        if row_data:
+            result.setdefault(ccn, []).append(row_data)
+
+    return result
+
+
+def _pivot_measures(
+    rows: list[dict[str, Any]],
+    measure_col: str | None = None,
+) -> dict[str, dict[str, Any]] | list[dict[str, Any]]:
+    """Pivot a list of measure rows into {measure_id: {fields}} if a measure
+    column is available, otherwise return as-is."""
+    if not measure_col:
+        return rows
+
+    pivoted: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        measure_id = row.get(measure_col, "")
+        if not measure_id:
+            continue
+        fields = {k: v for k, v in row.items() if k != measure_col}
+        pivoted[str(measure_id)] = fields
+    return pivoted
+
+
+def _load_mspb(csv_path: Path) -> dict[str, dict[str, Any]]:
+    """Load MSPB data keyed by CCN.  Returns {ccn: {mspb fields}}."""
+    result: dict[str, dict[str, Any]] = {}
+
+    with open(csv_path, encoding="utf-8", errors="replace") as f:
+        reader = csv.DictReader(f)
+        rows = list(reader)
+
+    if not rows:
+        return result
+
+    sample = rows[0]
+    col_ccn = _find_column(sample, [
+        "Facility ID", "Hospital CCN", "Provider Number",
+        "Facility Id", "CCN",
+    ])
+    if col_ccn is None:
+        print("    [warn] Could not find CCN column in MSPB data")
+        return result
+
+    for row in rows:
+        ccn = normalize_ccn(row.get(col_ccn, ""))
+        if ccn is None:
+            continue
+
+        data: dict[str, Any] = {}
+        for k, v in row.items():
+            if k == col_ccn:
+                continue
+            num = _try_float(v)
+            cleaned = _clean(v)
+            if num is not None:
+                data[k] = num
+            elif cleaned and cleaned not in ("Not Available", "Not Applicable"):
+                data[k] = cleaned
+
+        if data:
+            result[ccn] = data
+
+    return result
+
+
 def enrich_hospitals(
     hospital_dir: Path,
     county_dir: Path,
     hrrp_csv_path: Path,
     hvbp_csv_path: Path,
     download_date: date,
+    *,
+    timely_care_csv: Path | None = None,
+    complications_csv: Path | None = None,
+    hcahps_csv: Path | None = None,
+    hai_csv: Path | None = None,
+    unplanned_visits_csv: Path | None = None,
+    mspb_csv: Path | None = None,
 ) -> int:
-    """Enrich hospital manifests with HRRP, HVBP, and FIPS data.
+    """Enrich hospital manifests with quality, safety, and cost data.
 
     Reads existing manifests, joins enrichment data, and writes back.
     Returns the number of manifests enriched.
@@ -318,9 +453,60 @@ def enrich_hospitals(
     fips_lookup = _build_fips_lookup(county_dir)
     print(f"  [enrich] FIPS lookup: {len(fips_lookup):,} entries")
 
-    # Count HRRP/HVBP rows for provenance
+    # ── Load Phase-1 enrichment datasets ───────────────────────────
+    timely_data: dict[str, list[dict[str, Any]]] = {}
+    if timely_care_csv and timely_care_csv.exists():
+        print("  [enrich] Loading Timely & Effective Care data...")
+        timely_data = _load_measures_by_ccn(timely_care_csv, "Timely Care")
+        print(f"  [enrich] Timely Care: {len(timely_data):,} hospitals")
+
+    complications_data: dict[str, list[dict[str, Any]]] = {}
+    if complications_csv and complications_csv.exists():
+        print("  [enrich] Loading Complications & Deaths data...")
+        complications_data = _load_measures_by_ccn(complications_csv, "Complications")
+        print(f"  [enrich] Complications: {len(complications_data):,} hospitals")
+
+    hcahps_data: dict[str, list[dict[str, Any]]] = {}
+    if hcahps_csv and hcahps_csv.exists():
+        print("  [enrich] Loading HCAHPS data...")
+        hcahps_data = _load_measures_by_ccn(hcahps_csv, "HCAHPS")
+        print(f"  [enrich] HCAHPS: {len(hcahps_data):,} hospitals")
+
+    hai_data: dict[str, list[dict[str, Any]]] = {}
+    if hai_csv and hai_csv.exists():
+        print("  [enrich] Loading HAI data...")
+        hai_data = _load_measures_by_ccn(hai_csv, "HAI")
+        print(f"  [enrich] HAI: {len(hai_data):,} hospitals")
+
+    unplanned_data: dict[str, list[dict[str, Any]]] = {}
+    if unplanned_visits_csv and unplanned_visits_csv.exists():
+        print("  [enrich] Loading Unplanned Hospital Visits data...")
+        unplanned_data = _load_measures_by_ccn(unplanned_visits_csv, "Unplanned Visits")
+        print(f"  [enrich] Unplanned Visits: {len(unplanned_data):,} hospitals")
+
+    mspb_data: dict[str, dict[str, Any]] = {}
+    if mspb_csv and mspb_csv.exists():
+        print("  [enrich] Loading MSPB data...")
+        mspb_data = _load_mspb(mspb_csv)
+        print(f"  [enrich] MSPB: {len(mspb_data):,} hospitals")
+
+    # Count rows for provenance
     hrrp_row_count = sum(len(v) for v in hrrp_data.values())
     hvbp_row_count = len(hvbp_data)
+
+    # Map of new datasets to their data, manifest key, provenance info
+    NEW_DATASETS = [
+        ("hosp-timely-care", "Timely and Effective Care — Hospital",
+         timely_data, "timely_effective_care"),
+        ("hosp-complications", "Complications and Deaths — Hospital",
+         complications_data, "complications_deaths"),
+        ("hosp-hcahps", "Patient Survey (HCAHPS) — Hospital",
+         hcahps_data, "hcahps"),
+        ("hosp-hai", "Healthcare Associated Infections — Hospital",
+         hai_data, "hai"),
+        ("hosp-unplanned-visits", "Unplanned Hospital Visits — Hospital",
+         unplanned_data, "unplanned_visits"),
+    ]
 
     enriched = 0
     manifest_files = sorted(hospital_dir.glob("*.json"))
@@ -364,6 +550,17 @@ def enrich_hospitals(
                 manifest["fips"] = fips
                 modified = True
 
+        # d-h) Phase 1 measure datasets — stored as lists under data.*
+        for ds_id, ds_name, ds_data, manifest_key in NEW_DATASETS:
+            if ccn in ds_data:
+                manifest.setdefault("data", {})[manifest_key] = ds_data[ccn]
+                modified = True
+
+        # i) MSPB — single record per hospital (not a list)
+        if ccn in mspb_data:
+            manifest.setdefault("data", {})["mspb"] = mspb_data[ccn]
+            modified = True
+
         # Add enrichment provenance
         if modified:
             provenance_list = manifest.get("provenance", [])
@@ -388,6 +585,29 @@ def enrich_hospitals(
                         vintage="FY2026",
                         download_date=download_date,
                         row_count=hvbp_row_count,
+                    )
+                )
+
+            for ds_id, ds_name, ds_data, manifest_key in NEW_DATASETS:
+                if ccn in ds_data and ds_id not in existing_ids:
+                    provenance_list.append(
+                        build_provenance(
+                            dataset_id=ds_id,
+                            dataset_name=ds_name,
+                            vintage=str(download_date.year),
+                            download_date=download_date,
+                            row_count=sum(len(v) for v in ds_data.values()),
+                        )
+                    )
+
+            if ccn in mspb_data and "hosp-mspb" not in existing_ids:
+                provenance_list.append(
+                    build_provenance(
+                        dataset_id="hosp-mspb",
+                        dataset_name="Medicare Spending Per Beneficiary — Hospital",
+                        vintage=str(download_date.year),
+                        download_date=download_date,
+                        row_count=len(mspb_data),
                     )
                 )
 

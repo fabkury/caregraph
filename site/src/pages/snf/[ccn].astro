@@ -50,6 +50,11 @@ const csvDataUri = `data:text/csv;charset=utf-8,${encodeURIComponent(csvContent)
 // Provenance info
 const provenance = manifest.provenance?.[0];
 
+// Enrichment data
+const penalties = manifest.data?.penalties || null;
+const deficiencies = manifest.data?.deficiencies || null;
+const ownership = manifest.data?.ownership || null;
+
 // Related entities
 const related = manifest.related || [];
 
@@ -138,6 +143,102 @@ function badgeClass(type: string): string {
       </dl>
     </div>
 
+    {penalties && penalties.length > 0 && (
+      <div class="card">
+        <h2>Penalties ({penalties.length})</h2>
+        <div style="overflow-x: auto;">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Type</th>
+                <th>Fine Amount</th>
+              </tr>
+            </thead>
+            <tbody>
+              {penalties.map((p: any) => (
+                <tr>
+                  <td>{p.penalty_date || '\u2014'}</td>
+                  <td>{p.penalty_type || '\u2014'}</td>
+                  <td style={p.fine_amount ? 'color: var(--color-error);' : ''}>
+                    {p.fine_amount ? `$${p.fine_amount.toLocaleString()}` : '\u2014'}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <p style="font-size: 0.8rem; color: var(--color-text-muted); margin-top: 0.5rem;">
+          Fines and payment denials in the last 3 years. Source: CMS Nursing Home Penalties.
+        </p>
+      </div>
+    )}
+
+    {deficiencies && deficiencies.length > 0 && (
+      <div class="card">
+        <h2>Health Deficiencies ({deficiencies.length})</h2>
+        <div style="overflow-x: auto;">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Tag</th>
+                <th>Severity</th>
+                <th>Survey Date</th>
+                <th>Correction Date</th>
+              </tr>
+            </thead>
+            <tbody>
+              {deficiencies.slice(0, 50).map((d: any) => (
+                <tr>
+                  <td style="font-weight: 500;">{d.tag || '\u2014'}</td>
+                  <td>{d.scope_severity || '\u2014'}</td>
+                  <td>{d.survey_date || '\u2014'}</td>
+                  <td>{d.correction_date || '\u2014'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        {deficiencies.length > 50 && (
+          <p style="font-size: 0.8rem; color: var(--color-text-muted); margin-top: 0.5rem;">
+            Showing 50 of {deficiencies.length} citations. Use Table view for full data.
+          </p>
+        )}
+        <p style="font-size: 0.8rem; color: var(--color-text-muted); margin-top: 0.5rem;">
+          Health inspection citations from the last 3 years. Severity A-L (L = most severe). Source: CMS Health Deficiencies.
+        </p>
+      </div>
+    )}
+
+    {ownership && ownership.length > 0 && (
+      <div class="card">
+        <h2>Ownership</h2>
+        <div style="overflow-x: auto;">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Owner Name</th>
+                <th>Type</th>
+                <th>Ownership %</th>
+              </tr>
+            </thead>
+            <tbody>
+              {ownership.map((o: any) => (
+                <tr>
+                  <td style="font-weight: 500;">{o.owner_name || '\u2014'}</td>
+                  <td>{o.owner_type || '\u2014'}</td>
+                  <td>{o.ownership_percentage != null ? `${o.ownership_percentage}%` : '\u2014'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <p style="font-size: 0.8rem; color: var(--color-text-muted); margin-top: 0.5rem;">
+          Corporate ownership chain. Source: CMS Nursing Home Ownership.
+        </p>
+      </div>
+    )}
+
     {related.length > 0 && (
       <div class="card">
         <h2>Related Entities</h2>
@@ -162,10 +263,14 @@ function badgeClass(type: string): string {
         Downloaded: {provenance?.download_date}.
         Rows in source: {provenance?.row_count?.toLocaleString()}.
       </p>
-      <p>
-        <em>Nursing Home Provider Info</em> contains information about nursing homes
-        including quality ratings, staffing, and inspection results from CMS.
-      </p>
+      {manifest.provenance?.length > 1 && (
+        <p>
+          Additional data sources:
+          {manifest.provenance.slice(1).map((p: any) => (
+            <span> <strong>{p.dataset_name}</strong> ({p.vintage})</span>
+          ))}
+        </p>
+      )}
       <p>
         <a href="/methodology/">Full methodology &rarr;</a>
       </p>

@@ -42,6 +42,12 @@ const provenance = manifest.provenance?.[0];
 // Enrichment data
 const readmissions = manifest.data?.readmissions || null;
 const vbp = manifest.data?.vbp || null;
+const timelyCare = manifest.data?.timely_effective_care || null;
+const complications = manifest.data?.complications_deaths || null;
+const hcahps = manifest.data?.hcahps || null;
+const hai = manifest.data?.hai || null;
+const unplannedVisits = manifest.data?.unplanned_visits || null;
+const mspb = manifest.data?.mspb || null;
 const related = manifest.related || [];
 
 // Friendly measure names for HRRP
@@ -192,6 +198,200 @@ function badgeClass(type: string): string {
         </div>
         <p style="font-size: 0.8rem; color: var(--color-text-muted); margin-top: 0.5rem;">
           Source: Hospital Value-Based Purchasing Total Performance Score.
+        </p>
+      </div>
+    )}
+
+    {complications && complications.length > 0 && (
+      <div class="card">
+        <h2>Complications & Deaths</h2>
+        <div style="overflow-x: auto;">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Measure</th>
+                <th>Score</th>
+                <th>Compared to National</th>
+                <th>Denominator</th>
+              </tr>
+            </thead>
+            <tbody>
+              {complications.map((row: any) => {
+                const measureId = row['Measure ID'] || row['Measure Name'] || '';
+                const score = row['Score'] ?? row['Rate'] ?? '\u2014';
+                const compared = row['Compared to National'] || row['Compared To National'] || '';
+                const denom = row['Denominator'] ?? row['Number of Patients'] ?? '';
+                return (
+                  <tr>
+                    <td style="font-weight: 500;">{measureId}</td>
+                    <td>{typeof score === 'number' ? score.toFixed(2) : score}</td>
+                    <td>{compared}</td>
+                    <td>{typeof denom === 'number' ? denom.toLocaleString() : denom}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        <p style="font-size: 0.8rem; color: var(--color-text-muted); margin-top: 0.5rem;">
+          30-day mortality rates, patient safety indicators, and complication rates. Source: CMS Complications and Deaths.
+        </p>
+      </div>
+    )}
+
+    {hcahps && hcahps.length > 0 && (
+      <div class="card">
+        <h2>Patient Experience (HCAHPS)</h2>
+        <div style="overflow-x: auto;">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Measure</th>
+                <th>Score</th>
+                <th>Star Rating</th>
+              </tr>
+            </thead>
+            <tbody>
+              {hcahps.map((row: any) => {
+                const measureId = row['HCAHPS Measure ID'] || row['Measure ID'] || '';
+                const answer = row['HCAHPS Answer Description'] || row['Patient Survey Star Rating'] || '';
+                const pct = row['HCAHPS Answer Percent'] ?? row['Score'] ?? '';
+                const star = row['Patient Survey Star Rating'] ?? '';
+                return (
+                  <tr>
+                    <td style="font-weight: 500;">{measureId}{answer ? `: ${answer}` : ''}</td>
+                    <td>{typeof pct === 'number' ? `${pct}%` : pct || '\u2014'}</td>
+                    <td>{star || '\u2014'}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        <p style="font-size: 0.8rem; color: var(--color-text-muted); margin-top: 0.5rem;">
+          Patient experience survey results. Source: HCAHPS (Hospital Consumer Assessment of Healthcare Providers and Systems).
+        </p>
+      </div>
+    )}
+
+    {hai && hai.length > 0 && (
+      <div class="card">
+        <h2>Healthcare Associated Infections</h2>
+        <div style="overflow-x: auto;">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Measure</th>
+                <th>Score (SIR)</th>
+                <th>Compared to National</th>
+              </tr>
+            </thead>
+            <tbody>
+              {hai.map((row: any) => {
+                const measureId = row['Measure ID'] || row['HAI Measure ID'] || row['Measure Name'] || '';
+                const score = row['Score'] ?? row['SIR'] ?? '\u2014';
+                const compared = row['Compared to National'] || row['Compared To National'] || '';
+                return (
+                  <tr>
+                    <td style="font-weight: 500;">{measureId}</td>
+                    <td>{typeof score === 'number' ? score.toFixed(3) : score}</td>
+                    <td>{compared}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        <p style="font-size: 0.8rem; color: var(--color-text-muted); margin-top: 0.5rem;">
+          Standardized Infection Ratios (SIR &lt; 1.0 = fewer infections than predicted). Source: CDC NHSN / CMS HAI data.
+        </p>
+      </div>
+    )}
+
+    {timelyCare && timelyCare.length > 0 && (
+      <div class="card">
+        <h2>Timely & Effective Care</h2>
+        <div style="overflow-x: auto;">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Measure</th>
+                <th>Score</th>
+                <th>Condition</th>
+              </tr>
+            </thead>
+            <tbody>
+              {timelyCare.slice(0, 30).map((row: any) => {
+                const measureId = row['Measure ID'] || row['Measure Name'] || '';
+                const score = row['Score'] ?? '\u2014';
+                const condition = row['Condition'] || '';
+                return (
+                  <tr>
+                    <td style="font-weight: 500;">{measureId}</td>
+                    <td>{typeof score === 'number' ? score.toFixed(1) : score}</td>
+                    <td>{condition}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        <p style="font-size: 0.8rem; color: var(--color-text-muted); margin-top: 0.5rem;">
+          Process-of-care measures including ED wait times, treatment timeliness, and preventive care. Source: CMS Timely and Effective Care.
+        </p>
+      </div>
+    )}
+
+    {unplannedVisits && unplannedVisits.length > 0 && (
+      <div class="card">
+        <h2>Unplanned Hospital Visits</h2>
+        <div style="overflow-x: auto;">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Measure</th>
+                <th>Score</th>
+                <th>Compared to National</th>
+              </tr>
+            </thead>
+            <tbody>
+              {unplannedVisits.map((row: any) => {
+                const measureId = row['Measure ID'] || row['Measure Name'] || '';
+                const score = row['Score'] ?? row['Rate'] ?? '\u2014';
+                const compared = row['Compared to National'] || row['Compared To National'] || '';
+                return (
+                  <tr>
+                    <td style="font-weight: 500;">{measureId}</td>
+                    <td>{typeof score === 'number' ? score.toFixed(2) : score}</td>
+                    <td>{compared}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        <p style="font-size: 0.8rem; color: var(--color-text-muted); margin-top: 0.5rem;">
+          Readmission and ED return rates within 30 days of discharge. Source: CMS Unplanned Hospital Visits.
+        </p>
+      </div>
+    )}
+
+    {mspb && (
+      <div class="card">
+        <h2>Medicare Spending Per Beneficiary</h2>
+        <div class="metric-grid">
+          {Object.entries(mspb).slice(0, 8).map(([key, val]: [string, any]) => {
+            if (typeof val !== 'number') return null;
+            return (
+              <div class="metric-card">
+                <div class="label">{key.replace(/_/g, ' ')}</div>
+                <div class="value">{val.toFixed(2)}</div>
+              </div>
+            );
+          })}
+        </div>
+        <p style="font-size: 0.8rem; color: var(--color-text-muted); margin-top: 0.5rem;">
+          MSPB ratio: values &gt; 1.0 mean higher spending than the national median hospital. Source: CMS MSPB.
         </p>
       </div>
     )}
