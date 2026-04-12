@@ -32,18 +32,18 @@ const rawData = geoVar.raw || {};
 
 // Key metrics to highlight in Explore mode
 const highlightMetrics = [
-  { key: 'tot_mdcr_stdzd_pymt_pc', format: 'dollar' },
-  { key: 'tot_mdcr_pymt_pc', format: 'dollar' },
-  { key: 'bene_avg_risk_scre', format: 'decimal' },
-  { key: 'bene_avg_age', format: 'decimal' },
-  { key: 'acute_hosp_readmsn_pct', format: 'percent' },
-  { key: 'er_visits_per_1000_benes', format: 'decimal' },
-  { key: 'bene_dual_pct', format: 'percent' },
-  { key: 'ma_prtcptn_rate', format: 'percent' },
-  { key: 'ip_mdcr_stdzd_pymt_pc', format: 'dollar' },
-  { key: 'snf_mdcr_stdzd_pymt_pc', format: 'dollar' },
-  { key: 'hh_mdcr_stdzd_pymt_pc', format: 'dollar' },
-  { key: 'physcn_mdcr_stdzd_pymt_pc', format: 'dollar' },
+  { key: 'TOT_MDCR_STDZD_PYMT_PC', format: 'dollar' },
+  { key: 'TOT_MDCR_PYMT_PC', format: 'dollar' },
+  { key: 'BENE_AVG_RISK_SCRE', format: 'decimal' },
+  { key: 'BENE_AVG_AGE', format: 'decimal' },
+  { key: 'ACUTE_HOSP_READMSN_PCT', format: 'percent' },
+  { key: 'ER_VISITS_PER_1000_BENES', format: 'decimal' },
+  { key: 'BENE_DUAL_PCT', format: 'percent' },
+  { key: 'MA_PRTCPTN_RATE', format: 'percent' },
+  { key: 'IP_MDCR_STDZD_PYMT_PC', format: 'dollar' },
+  { key: 'SNF_MDCR_STDZD_PYMT_PC', format: 'dollar' },
+  { key: 'HH_MDCR_STDZD_PYMT_PC', format: 'dollar' },
+  { key: 'HOSPC_MDCR_STDZD_PYMT_PC', format: 'dollar' },
 ];
 
 function formatValue(val: number, format: string): string {
