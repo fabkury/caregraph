@@ -31,9 +31,12 @@ Bullet list of 3-6 caveats. Include: suppression rules, coverage gaps (e.g., Med
 Bullet list of 2-4 field-level data quality observations. Include: encoding issues, missing data patterns, fields with high null rates, numeric fields stored as strings, date format inconsistencies, or any transformations applied during ETL.
 
 RULES:
+- Output ONLY the Markdown content — no preamble, no summary, no meta-commentary
+- Your response must start with "## Overview" on the very first line
 - Use ## for section headings (not # or ###)
 - Do not include a title heading — the page template adds it
 - Do not use phrases like "I cannot", "As an AI", "I'm sorry", "I don't have", or "I am unable"
+- Do not explain what you are about to write — just write it
 - Do not speculate about data you have not been told about
 - Every section must contain substantive content (at least 50 characters)
 - Write in present tense
