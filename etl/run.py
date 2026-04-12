@@ -36,12 +36,14 @@ from etl.build.enrich_hospitals import enrich_hospitals
 from etl.build.enrich_counties import enrich_counties
 from etl.build.build_crosslinks import build_crosslinks
 from etl.build.build_search_index import build_search_index
+from etl.build.build_map_layers import build_map_layers
+from etl.build.build_compare_data import build_compare_data
 
 
 def main() -> None:
     start = time.time()
     print("=" * 60)
-    print("CareGraph ETL — Phase 1 (M1 + M2)")
+    print("CareGraph ETL — Phase 1–4 (M1 + M2 + M3 + M4)")
     print("=" * 60)
 
     raw_dir = REPO_ROOT / "data" / "raw"
@@ -126,8 +128,40 @@ def main() -> None:
             editorial_count += 1
     print(f"  -> Copied {editorial_count} editorial files to {editorial_dst}")
 
-    # ── Step 11: Write manifest index ───────────────────────────────
-    print("\n[Step 11] Writing manifest index...")
+    # ── Step 11: Build map layers ──────────────────────────────────
+    print("\n[Step 11] Building map layers for choropleth...")
+    map_out = site_data_dir / "map"
+    map_counts = build_map_layers(county_out, map_out)
+
+    # ── Step 12: Build compare data ─────────────────────────────────
+    print("\n[Step 12] Building compare summary data...")
+    compare_out = site_data_dir / "compare"
+    compare_counts = build_compare_data(site_data_dir, compare_out)
+
+    # ── Step 13: Copy map layers and compare data to site/public/ ───
+    print("\n[Step 13] Copying map layers and compare data to site/public/...")
+    site_public = REPO_ROOT / "site" / "public"
+
+    # Copy map layers
+    map_public = site_public / "map"
+    map_public.mkdir(parents=True, exist_ok=True)
+    map_copied = 0
+    for json_file in map_out.glob("*.json"):
+        shutil.copy2(json_file, map_public / json_file.name)
+        map_copied += 1
+    print(f"  -> Copied {map_copied} map layer files to {map_public}")
+
+    # Copy compare data
+    compare_public = site_public / "compare"
+    compare_public.mkdir(parents=True, exist_ok=True)
+    compare_copied = 0
+    for json_file in compare_out.glob("*.json"):
+        shutil.copy2(json_file, compare_public / json_file.name)
+        compare_copied += 1
+    print(f"  -> Copied {compare_copied} compare data files to {compare_public}")
+
+    # ── Step 14: Write manifest index ───────────────────────────────
+    print("\n[Step 14] Writing manifest index...")
     index = {
         "generated": today.isoformat(),
         "entities": {
@@ -165,6 +199,8 @@ def main() -> None:
             "count": search_count,
             "path": "search-index.json",
         },
+        "map_layers": map_counts,
+        "compare_data": compare_counts,
     }
     index_path = site_data_dir / "index.json"
     with open(index_path, "w", encoding="utf-8") as f:
@@ -181,6 +217,8 @@ def main() -> None:
     print(f"  ACOs:      {aco_count:,} manifests")
     print(f"  Search:    {search_count:,} index entries")
     print(f"  Editorial: {editorial_count} methodology pages")
+    print(f"  Map layers: {sum(map_counts.values()):,} total entries across {len(map_counts)} layers")
+    print(f"  Compare:   {sum(compare_counts.values()):,} total records across {len(compare_counts)} types")
     print(f"  Output:    {site_data_dir}")
     print("=" * 60)
 

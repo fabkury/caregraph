@@ -1,0 +1,597 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+---
+
+<BaseLayout title="Compare" description="Compare hospitals, SNFs, counties, and ACOs side by side">
+  <style>
+    .compare-header {
+      margin-bottom: 1.5rem;
+    }
+
+    .compare-header h1 {
+      margin-bottom: 0.25rem;
+    }
+
+    .compare-header p {
+      color: var(--color-text-muted);
+      font-size: 0.95rem;
+    }
+
+    .compare-controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      align-items: center;
+      margin-bottom: 1.5rem;
+    }
+
+    .type-select {
+      padding: 0.5rem 0.75rem;
+      border: 1px solid var(--color-border);
+      border-radius: 6px;
+      font-size: 0.9rem;
+      background: var(--color-surface);
+    }
+
+    .add-entity-wrapper {
+      position: relative;
+      flex: 1;
+      min-width: 250px;
+      max-width: 400px;
+    }
+
+    .add-entity-input {
+      width: 100%;
+      padding: 0.5rem 0.75rem;
+      border: 1px solid var(--color-border);
+      border-radius: 6px;
+      font-size: 0.9rem;
+    }
+
+    .add-entity-input:focus {
+      outline: none;
+      border-color: var(--color-primary-light);
+    }
+
+    .autocomplete-list {
+      position: absolute;
+      top: 100%;
+      left: 0;
+      right: 0;
+      max-height: 250px;
+      overflow-y: auto;
+      background: var(--color-surface);
+      border: 1px solid var(--color-border);
+      border-top: none;
+      border-radius: 0 0 6px 6px;
+      z-index: 50;
+      display: none;
+    }
+
+    .autocomplete-list.open {
+      display: block;
+    }
+
+    .autocomplete-item {
+      padding: 0.5rem 0.75rem;
+      cursor: pointer;
+      font-size: 0.85rem;
+      border-bottom: 1px solid var(--color-border-light);
+    }
+
+    .autocomplete-item:hover,
+    .autocomplete-item.highlighted {
+      background: var(--color-border-light);
+    }
+
+    .autocomplete-item .item-name {
+      font-weight: 500;
+    }
+
+    .autocomplete-item .item-detail {
+      color: var(--color-text-muted);
+      font-size: 0.8rem;
+    }
+
+    .export-btn {
+      margin-left: auto;
+    }
+
+    /* Compare table */
+    .compare-table-wrapper {
+      overflow-x: auto;
+      margin-bottom: 2rem;
+    }
+
+    .compare-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.9rem;
+      min-width: 500px;
+    }
+
+    .compare-table th,
+    .compare-table td {
+      padding: 0.6rem 0.75rem;
+      text-align: left;
+      border-bottom: 1px solid var(--color-border);
+      white-space: nowrap;
+    }
+
+    .compare-table th {
+      font-weight: 600;
+      background: var(--color-border-light);
+      position: sticky;
+      top: 0;
+    }
+
+    .compare-table th.metric-header {
+      min-width: 180px;
+      color: var(--color-text-muted);
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .compare-table th.entity-header {
+      min-width: 200px;
+      max-width: 250px;
+      white-space: normal;
+      vertical-align: bottom;
+    }
+
+    .entity-header-content {
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+    }
+
+    .entity-header-content .entity-name {
+      font-weight: 600;
+      font-size: 0.85rem;
+      color: var(--color-text);
+    }
+
+    .entity-header-content .entity-name a {
+      color: inherit;
+    }
+
+    .entity-header-content .entity-name a:hover {
+      color: var(--color-primary);
+    }
+
+    .entity-header-content .entity-id {
+      color: var(--color-text-muted);
+      font-size: 0.75rem;
+      font-weight: 400;
+    }
+
+    .remove-btn {
+      background: none;
+      border: none;
+      color: var(--color-error);
+      cursor: pointer;
+      font-size: 0.75rem;
+      padding: 0;
+    }
+
+    .remove-btn:hover {
+      text-decoration: underline;
+    }
+
+    .cell-best {
+      background: #d1fae5;
+    }
+
+    .cell-worst {
+      background: #fee2e2;
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 4rem 2rem;
+      color: var(--color-text-muted);
+    }
+
+    .empty-state h2 {
+      color: var(--color-text);
+      margin-bottom: 0.5rem;
+    }
+
+    .sample-links {
+      margin-top: 1.5rem;
+      font-size: 0.9rem;
+    }
+
+    .sample-links a {
+      display: inline-block;
+      margin: 0.25rem 0.5rem;
+    }
+  </style>
+
+  <div class="compare-header">
+    <h1>Compare</h1>
+    <p>Select entities to compare side by side. Add up to 6 entities of the same type.</p>
+  </div>
+
+  <div class="compare-controls">
+    <select class="type-select" id="type-select">
+      <option value="hospital">Hospitals</option>
+      <option value="snf">SNFs</option>
+      <option value="county">Counties</option>
+      <option value="aco">ACOs</option>
+    </select>
+
+    <div class="add-entity-wrapper">
+      <input
+        type="text"
+        class="add-entity-input"
+        id="add-entity-input"
+        placeholder="Search to add an entity..."
+      />
+      <div class="autocomplete-list" id="autocomplete-list"></div>
+    </div>
+
+    <button class="btn export-btn" id="export-csv-btn">Export CSV</button>
+  </div>
+
+  <div id="compare-content">
+    <div class="empty-state" id="empty-state">
+      <h2>No entities selected</h2>
+      <p>Use the search above to add entities, or try a sample comparison:</p>
+      <div class="sample-links">
+        <a href="/compare/?type=hospital&ids=010001,360180,330214">3 Hospitals</a>
+        <a href="/compare/?type=county&ids=06037,17031,48201">3 Counties (LA, Cook, Harris)</a>
+        <a href="/compare/?type=snf&ids=015009,335725,676108">3 SNFs</a>
+      </div>
+    </div>
+    <div class="compare-table-wrapper" id="compare-table-wrapper" style="display:none;">
+      <table class="compare-table" id="compare-table"></table>
+    </div>
+  </div>
+
+  <script>
+    // ── Configuration per entity type ──
+    interface MetricDef {
+      key: string;
+      label: string;
+      format: 'number' | 'dollar' | 'percent' | 'rating' | 'text' | 'integer';
+      higherIsBetter?: boolean;
+    }
+
+    const METRIC_DEFS: Record<string, MetricDef[]> = {
+      hospital: [
+        { key: 'state', label: 'State', format: 'text' },
+        { key: 'city', label: 'City', format: 'text' },
+        { key: 'type', label: 'Hospital Type', format: 'text' },
+        { key: 'rating', label: 'Overall Rating', format: 'rating', higherIsBetter: true },
+        { key: 'vbp_score', label: 'VBP Total Score', format: 'number', higherIsBetter: true },
+        { key: 'readmission_ratio', label: 'Avg Readmission Ratio', format: 'number', higherIsBetter: false },
+        { key: 'emergency', label: 'Emergency Services', format: 'text' },
+      ],
+      snf: [
+        { key: 'state', label: 'State', format: 'text' },
+        { key: 'city', label: 'City', format: 'text' },
+        { key: 'beds', label: 'Beds', format: 'integer' },
+        { key: 'rating', label: 'Overall Rating', format: 'rating', higherIsBetter: true },
+        { key: 'health_inspection', label: 'Health Inspection', format: 'rating', higherIsBetter: true },
+        { key: 'qm_rating', label: 'Quality Measures', format: 'rating', higherIsBetter: true },
+        { key: 'staffing_rating', label: 'Staffing', format: 'rating', higherIsBetter: true },
+        { key: 'ownership', label: 'Ownership', format: 'text' },
+      ],
+      county: [
+        { key: 'state', label: 'State', format: 'text' },
+        { key: 'spending', label: 'Per Capita Spending', format: 'dollar', higherIsBetter: false },
+        { key: 'risk_score', label: 'HCC Risk Score', format: 'number', higherIsBetter: false },
+        { key: 'readmission', label: 'Readmission Rate', format: 'percent', higherIsBetter: false },
+        { key: 'dual_pct', label: 'Dual Eligible %', format: 'percent', higherIsBetter: false },
+        { key: 'avg_age', label: 'Average Age', format: 'number' },
+        { key: 'diabetes', label: 'Diabetes %', format: 'number', higherIsBetter: false },
+      ],
+      aco: [
+        { key: 'track', label: 'Track', format: 'text' },
+        { key: 'quality_score', label: 'Quality Score', format: 'number', higherIsBetter: true },
+        { key: 'savings_rate', label: 'Savings Rate %', format: 'number', higherIsBetter: true },
+        { key: 'beneficiaries', label: 'Beneficiaries', format: 'integer' },
+        { key: 'per_capita_exp', label: 'Per Capita Expenditure', format: 'dollar', higherIsBetter: false },
+        { key: 'gen_save_loss', label: 'Generated Savings/Loss', format: 'dollar', higherIsBetter: true },
+      ],
+    };
+
+    const ENTITY_FILE_MAP: Record<string, string> = {
+      hospital: '/compare/hospitals.json',
+      snf: '/compare/snfs.json',
+      county: '/compare/counties.json',
+      aco: '/compare/acos.json',
+    };
+
+    function entityPageUrl(type: string, id: string): string {
+      if (type === 'hospital') return `/hospital/${id}/`;
+      if (type === 'snf') return `/snf/${id}/`;
+      if (type === 'county') return `/county/${id}/`;
+      if (type === 'aco') return `/aco/${id}/`;
+      return '#';
+    }
+
+    // ── State ──
+    let allEntities: any[] = [];
+    let selectedIds: string[] = [];
+    let currentType = 'hospital';
+    let highlightedIndex = -1;
+
+    // ── DOM elements ──
+    const typeSelect = document.getElementById('type-select') as HTMLSelectElement;
+    const addInput = document.getElementById('add-entity-input') as HTMLInputElement;
+    const autocompleteList = document.getElementById('autocomplete-list')!;
+    const emptyState = document.getElementById('empty-state')!;
+    const tableWrapper = document.getElementById('compare-table-wrapper')!;
+    const compareTable = document.getElementById('compare-table') as HTMLTableElement;
+    const exportBtn = document.getElementById('export-csv-btn')!;
+
+    // ── URL management ──
+    function readUrl() {
+      const params = new URLSearchParams(window.location.search);
+      currentType = params.get('type') || 'hospital';
+      const idsStr = params.get('ids') || '';
+      selectedIds = idsStr ? idsStr.split(',').filter(Boolean) : [];
+      typeSelect.value = currentType;
+    }
+
+    function updateUrl() {
+      const params = new URLSearchParams();
+      params.set('type', currentType);
+      if (selectedIds.length > 0) {
+        params.set('ids', selectedIds.join(','));
+      }
+      const newUrl = `${window.location.pathname}?${params.toString()}`;
+      history.replaceState(null, '', newUrl);
+    }
+
+    // ── Data loading ──
+    const dataCache: Record<string, any[]> = {};
+
+    async function loadEntityData(type: string): Promise<any[]> {
+      if (dataCache[type]) return dataCache[type];
+
+      const url = ENTITY_FILE_MAP[type];
+      if (!url) return [];
+
+      try {
+        const resp = await fetch(url);
+        if (!resp.ok) return [];
+        const data = await resp.json();
+        dataCache[type] = data;
+        return data;
+      } catch {
+        return [];
+      }
+    }
+
+    // ── Format helpers ──
+    function formatCell(value: any, format: string): string {
+      if (value === null || value === undefined) return '\u2014';
+      switch (format) {
+        case 'dollar':
+          return '$' + Math.round(value).toLocaleString();
+        case 'percent':
+          return (typeof value === 'number' && value < 1 ? (value * 100).toFixed(1) : value.toFixed(1)) + '%';
+        case 'rating':
+          if (typeof value !== 'number') return '\u2014';
+          return '\u2605'.repeat(value) + '\u2606'.repeat(5 - value) + ` (${value}/5)`;
+        case 'integer':
+          return typeof value === 'number' ? Math.round(value).toLocaleString() : String(value);
+        case 'number':
+          return typeof value === 'number' ? value.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 }) : String(value);
+        case 'text':
+        default:
+          return String(value);
+      }
+    }
+
+    // ── Render comparison table ──
+    function renderTable() {
+      if (selectedIds.length === 0) {
+        emptyState.style.display = '';
+        tableWrapper.style.display = 'none';
+        return;
+      }
+
+      emptyState.style.display = 'none';
+      tableWrapper.style.display = '';
+
+      const metrics = METRIC_DEFS[currentType] || [];
+      const entities = selectedIds
+        .map(id => allEntities.find(e => e.id === id))
+        .filter(Boolean);
+
+      if (entities.length === 0) {
+        emptyState.style.display = '';
+        tableWrapper.style.display = 'none';
+        return;
+      }
+
+      // Build table HTML
+      let html = '<thead><tr><th class="metric-header">Metric</th>';
+      for (const entity of entities) {
+        html += `<th class="entity-header">
+          <div class="entity-header-content">
+            <span class="entity-name"><a href="${entityPageUrl(currentType, entity.id)}">${entity.name}</a></span>
+            <span class="entity-id">${entity.id}</span>
+            <button class="remove-btn" data-id="${entity.id}">Remove</button>
+          </div>
+        </th>`;
+      }
+      html += '</tr></thead><tbody>';
+
+      for (const metric of metrics) {
+        // Get numeric values for color-coding
+        const numericValues = entities
+          .map(e => e[metric.key])
+          .filter(v => typeof v === 'number');
+
+        let bestVal: number | null = null;
+        let worstVal: number | null = null;
+
+        if (numericValues.length >= 2 && metric.higherIsBetter !== undefined) {
+          if (metric.higherIsBetter) {
+            bestVal = Math.max(...numericValues);
+            worstVal = Math.min(...numericValues);
+          } else {
+            bestVal = Math.min(...numericValues);
+            worstVal = Math.max(...numericValues);
+          }
+        }
+
+        html += `<tr><td class="metric-header">${metric.label}</td>`;
+        for (const entity of entities) {
+          const val = entity[metric.key];
+          const formatted = formatCell(val, metric.format);
+
+          let cellClass = '';
+          if (typeof val === 'number' && bestVal !== null && worstVal !== null && bestVal !== worstVal) {
+            if (val === bestVal) cellClass = 'cell-best';
+            else if (val === worstVal) cellClass = 'cell-worst';
+          }
+
+          html += `<td class="${cellClass}">${formatted}</td>`;
+        }
+        html += '</tr>';
+      }
+
+      html += '</tbody>';
+      compareTable.innerHTML = html;
+
+      // Attach remove handlers
+      compareTable.querySelectorAll('.remove-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const id = (btn as HTMLElement).dataset.id!;
+          selectedIds = selectedIds.filter(x => x !== id);
+          updateUrl();
+          renderTable();
+        });
+      });
+    }
+
+    // ── Autocomplete ──
+    function showAutocomplete(query: string) {
+      if (!query || query.length < 1) {
+        autocompleteList.classList.remove('open');
+        return;
+      }
+
+      const q = query.toLowerCase();
+      const matches = allEntities
+        .filter(e => !selectedIds.includes(e.id))
+        .filter(e =>
+          (e.name && e.name.toLowerCase().includes(q)) ||
+          (e.id && e.id.toLowerCase().includes(q))
+        )
+        .slice(0, 10);
+
+      if (matches.length === 0) {
+        autocompleteList.classList.remove('open');
+        return;
+      }
+
+      highlightedIndex = -1;
+      autocompleteList.innerHTML = matches
+        .map((m, i) => `<div class="autocomplete-item" data-index="${i}" data-id="${m.id}">
+          <div class="item-name">${m.name}</div>
+          <div class="item-detail">${m.id}${m.state ? ' \u00b7 ' + m.state : ''}${m.city ? ' \u00b7 ' + m.city : ''}</div>
+        </div>`)
+        .join('');
+
+      autocompleteList.classList.add('open');
+
+      // Click handlers
+      autocompleteList.querySelectorAll('.autocomplete-item').forEach(item => {
+        item.addEventListener('click', () => {
+          const id = (item as HTMLElement).dataset.id!;
+          if (!selectedIds.includes(id) && selectedIds.length < 6) {
+            selectedIds.push(id);
+            updateUrl();
+            renderTable();
+          }
+          addInput.value = '';
+          autocompleteList.classList.remove('open');
+        });
+      });
+    }
+
+    addInput.addEventListener('input', () => {
+      showAutocomplete(addInput.value.trim());
+    });
+
+    addInput.addEventListener('keydown', (e) => {
+      const items = autocompleteList.querySelectorAll('.autocomplete-item');
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        highlightedIndex = Math.min(highlightedIndex + 1, items.length - 1);
+        items.forEach((el, i) => el.classList.toggle('highlighted', i === highlightedIndex));
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        highlightedIndex = Math.max(highlightedIndex - 1, 0);
+        items.forEach((el, i) => el.classList.toggle('highlighted', i === highlightedIndex));
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        if (highlightedIndex >= 0 && items[highlightedIndex]) {
+          (items[highlightedIndex] as HTMLElement).click();
+        }
+      } else if (e.key === 'Escape') {
+        autocompleteList.classList.remove('open');
+      }
+    });
+
+    // Close autocomplete on outside click
+    document.addEventListener('click', (e) => {
+      if (!(e.target as HTMLElement).closest('.add-entity-wrapper')) {
+        autocompleteList.classList.remove('open');
+      }
+    });
+
+    // ── Type switching ──
+    typeSelect.addEventListener('change', async () => {
+      currentType = typeSelect.value;
+      selectedIds = [];
+      updateUrl();
+      allEntities = await loadEntityData(currentType);
+      renderTable();
+    });
+
+    // ── CSV Export ──
+    exportBtn.addEventListener('click', () => {
+      if (selectedIds.length === 0) return;
+
+      const metrics = METRIC_DEFS[currentType] || [];
+      const entities = selectedIds
+        .map(id => allEntities.find(e => e.id === id))
+        .filter(Boolean);
+
+      let csv = 'Metric,' + entities.map(e => `"${e.name} (${e.id})"`).join(',') + '\n';
+      for (const metric of metrics) {
+        const row = [metric.label, ...entities.map(e => {
+          const val = e[metric.key];
+          return val !== null && val !== undefined ? String(val) : '';
+        })];
+        csv += row.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',') + '\n';
+      }
+
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `caregraph_compare_${currentType}_${new Date().toISOString().split('T')[0]}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    });
+
+    // ── Init ──
+    async function init() {
+      readUrl();
+      allEntities = await loadEntityData(currentType);
+      renderTable();
+    }
+
+    init();
+  </script>
+</BaseLayout>

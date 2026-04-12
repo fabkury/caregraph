@@ -1,0 +1,336 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+---
+
+<BaseLayout title="Workspace" description="Your personal pinned entities and notes">
+  <style>
+    .workspace-header {
+      margin-bottom: 1rem;
+    }
+
+    .workspace-header h1 {
+      margin-bottom: 0.25rem;
+    }
+
+    .browser-warning {
+      background: #fef3c7;
+      border: 1px solid #f59e0b;
+      border-radius: 6px;
+      padding: 0.75rem 1rem;
+      font-size: 0.85rem;
+      color: #92400e;
+      margin-bottom: 1.5rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .workspace-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .file-input-label {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      padding: 0.5rem 1rem;
+      border: 1px solid var(--color-border);
+      border-radius: 6px;
+      background: var(--color-surface);
+      color: var(--color-text);
+      font-size: 0.85rem;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .file-input-label:hover {
+      border-color: var(--color-primary);
+      color: var(--color-primary);
+    }
+
+    #import-file {
+      display: none;
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 4rem 2rem;
+      color: var(--color-text-muted);
+    }
+
+    .empty-state h2 {
+      color: var(--color-text);
+      margin-bottom: 0.5rem;
+    }
+
+    .pin-list {
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+
+    .pin-card {
+      background: var(--color-surface);
+      border: 1px solid var(--color-border);
+      border-radius: 8px;
+      padding: 1rem 1.25rem;
+    }
+
+    .pin-top {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin-bottom: 0.75rem;
+    }
+
+    .pin-name {
+      font-weight: 600;
+      font-size: 1rem;
+    }
+
+    .pin-name a {
+      color: var(--color-text);
+    }
+
+    .pin-name a:hover {
+      color: var(--color-primary);
+    }
+
+    .pin-id {
+      color: var(--color-text-muted);
+      font-size: 0.8rem;
+    }
+
+    .pin-remove {
+      margin-left: auto;
+      background: none;
+      border: 1px solid var(--color-border);
+      border-radius: 4px;
+      padding: 0.25rem 0.5rem;
+      color: var(--color-error);
+      cursor: pointer;
+      font-size: 0.8rem;
+    }
+
+    .pin-remove:hover {
+      background: #fee2e2;
+      border-color: var(--color-error);
+    }
+
+    .pin-notes {
+      width: 100%;
+      min-height: 60px;
+      padding: 0.5rem 0.75rem;
+      border: 1px solid var(--color-border);
+      border-radius: 6px;
+      font-family: var(--font-sans);
+      font-size: 0.85rem;
+      resize: vertical;
+      line-height: 1.5;
+    }
+
+    .pin-notes:focus {
+      outline: none;
+      border-color: var(--color-primary-light);
+    }
+
+    .pin-notes-label {
+      font-size: 0.75rem;
+      color: var(--color-text-muted);
+      margin-bottom: 0.25rem;
+    }
+
+    .pin-compare-link {
+      margin-top: 1.5rem;
+      padding: 1rem;
+      background: var(--color-border-light);
+      border-radius: 6px;
+      font-size: 0.9rem;
+      display: none;
+    }
+  </style>
+
+  <div class="workspace-header">
+    <h1>Workspace</h1>
+    <p style="color: var(--color-text-muted);">Pin entities from their pages and keep notes here.</p>
+  </div>
+
+  <div class="browser-warning">
+    Your workspace lives in this browser only. Export regularly to avoid losing your data.
+  </div>
+
+  <div class="workspace-actions">
+    <button class="btn" id="export-btn">Export workspace</button>
+    <label class="file-input-label">
+      Import workspace
+      <input type="file" id="import-file" accept=".json" />
+    </label>
+    <button class="btn" id="clear-btn" style="margin-left: auto; color: var(--color-error); border-color: var(--color-error);">Clear all</button>
+  </div>
+
+  <div id="workspace-content">
+    <div class="empty-state" id="empty-state">
+      <h2>No pinned entities</h2>
+      <p>
+        Visit any hospital, SNF, county, or ACO page and click "Pin to Workspace"
+        to save it here for quick access.
+      </p>
+    </div>
+
+    <div class="pin-list" id="pin-list"></div>
+
+    <div class="pin-compare-link" id="compare-link-section">
+      <strong>Quick compare:</strong>
+      <span id="compare-links"></span>
+    </div>
+  </div>
+
+  <script>
+    import {
+      getPins, removePin, getNote, setNote,
+      exportWorkspace, importWorkspace,
+      type Pin,
+    } from '../scripts/workspace';
+
+    const emptyState = document.getElementById('empty-state')!;
+    const pinList = document.getElementById('pin-list')!;
+    const exportBtn = document.getElementById('export-btn')!;
+    const importInput = document.getElementById('import-file') as HTMLInputElement;
+    const clearBtn = document.getElementById('clear-btn')!;
+    const compareLinkSection = document.getElementById('compare-link-section')!;
+    const compareLinksSpan = document.getElementById('compare-links')!;
+
+    function entityPageUrl(type: string, id: string): string {
+      if (type === 'hospital') return `/hospital/${id}/`;
+      if (type === 'snf') return `/snf/${id}/`;
+      if (type === 'county') return `/county/${id}/`;
+      if (type === 'aco') return `/aco/${id}/`;
+      return '#';
+    }
+
+    function badgeHtml(type: string): string {
+      return `<span class="badge badge-${type}">${type}</span>`;
+    }
+
+    function render() {
+      const pins = getPins();
+
+      if (pins.length === 0) {
+        emptyState.style.display = '';
+        pinList.style.display = 'none';
+        compareLinkSection.style.display = 'none';
+        return;
+      }
+
+      emptyState.style.display = 'none';
+      pinList.style.display = '';
+
+      pinList.innerHTML = pins.map((pin: Pin) => {
+        const note = getNote(pin.type, pin.id);
+        return `<div class="pin-card" data-type="${pin.type}" data-id="${pin.id}">
+          <div class="pin-top">
+            ${badgeHtml(pin.type)}
+            <span class="pin-name"><a href="${entityPageUrl(pin.type, pin.id)}">${pin.name}</a></span>
+            <span class="pin-id">${pin.id}</span>
+            <button class="pin-remove" data-type="${pin.type}" data-id="${pin.id}">Remove</button>
+          </div>
+          <div class="pin-notes-label">Notes</div>
+          <textarea class="pin-notes" data-type="${pin.type}" data-id="${pin.id}" placeholder="Add notes...">${note}</textarea>
+        </div>`;
+      }).join('');
+
+      // Remove handlers
+      pinList.querySelectorAll('.pin-remove').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const { type, id } = (btn as HTMLElement).dataset;
+          if (type && id) {
+            removePin(type, id);
+            render();
+          }
+        });
+      });
+
+      // Note handlers (debounced save)
+      pinList.querySelectorAll('.pin-notes').forEach(textarea => {
+        let timer: number;
+        textarea.addEventListener('input', () => {
+          clearTimeout(timer);
+          timer = window.setTimeout(() => {
+            const { type, id } = (textarea as HTMLElement).dataset;
+            if (type && id) {
+              setNote(type, id, (textarea as HTMLTextAreaElement).value);
+            }
+          }, 500);
+        });
+      });
+
+      // Build compare links by type
+      const byType: Record<string, Pin[]> = {};
+      for (const pin of pins) {
+        if (!byType[pin.type]) byType[pin.type] = [];
+        byType[pin.type].push(pin);
+      }
+
+      const compareLinks: string[] = [];
+      for (const [type, typePins] of Object.entries(byType)) {
+        if (typePins.length >= 2) {
+          const ids = typePins.map(p => p.id).join(',');
+          compareLinks.push(`<a href="/compare/?type=${type}&ids=${ids}">Compare ${typePins.length} ${type}s</a>`);
+        }
+      }
+
+      if (compareLinks.length > 0) {
+        compareLinkSection.style.display = '';
+        compareLinksSpan.innerHTML = compareLinks.join(' &middot; ');
+      } else {
+        compareLinkSection.style.display = 'none';
+      }
+    }
+
+    // Export
+    exportBtn.addEventListener('click', () => {
+      const data = exportWorkspace();
+      const blob = new Blob([data], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `caregraph-workspace-${new Date().toISOString().split('T')[0]}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    });
+
+    // Import
+    importInput.addEventListener('change', async () => {
+      const file = importInput.files?.[0];
+      if (!file) return;
+
+      try {
+        const text = await file.text();
+        importWorkspace(text);
+        render();
+        alert('Workspace imported successfully.');
+      } catch (err) {
+        alert('Failed to import workspace. Make sure the file is a valid CareGraph workspace export.');
+      }
+
+      // Reset file input
+      importInput.value = '';
+    });
+
+    // Clear all
+    clearBtn.addEventListener('click', () => {
+      if (!confirm('Remove all pinned entities and notes? This cannot be undone.')) return;
+      const pins = getPins();
+      for (const pin of pins) {
+        removePin(pin.type, pin.id);
+        setNote(pin.type, pin.id, '');
+      }
+      render();
+    });
+
+    render();
+  </script>
+</BaseLayout>

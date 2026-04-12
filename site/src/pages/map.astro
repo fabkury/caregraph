@@ -1,0 +1,438 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+---
+
+<BaseLayout title="Map Explorer" description="Interactive choropleth map of Medicare metrics by county">
+  <style>
+    .map-container {
+      display: flex;
+      gap: 0;
+      height: calc(100vh - var(--nav-height) - 2rem);
+      margin: -2rem -1.5rem 0;
+    }
+
+    .map-sidebar {
+      width: 260px;
+      min-width: 260px;
+      background: var(--color-surface);
+      border-right: 1px solid var(--color-border);
+      padding: 1rem;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+
+    .map-sidebar h2 {
+      font-size: 1rem;
+      margin: 0;
+      color: var(--color-text);
+    }
+
+    .layer-option {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.5rem;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.9rem;
+      transition: background 0.1s;
+    }
+
+    .layer-option:hover {
+      background: var(--color-border-light);
+    }
+
+    .layer-option input[type="radio"] {
+      accent-color: var(--color-primary);
+    }
+
+    .layer-option.active {
+      background: #dbeafe;
+    }
+
+    .legend-container {
+      margin-top: auto;
+      padding-top: 1rem;
+      border-top: 1px solid var(--color-border);
+    }
+
+    .legend-container h3 {
+      font-size: 0.8rem;
+      color: var(--color-text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin: 0 0 0.5rem;
+    }
+
+    .legend-bar {
+      display: flex;
+      height: 14px;
+      border-radius: 3px;
+      overflow: hidden;
+      margin-bottom: 0.25rem;
+    }
+
+    .legend-bar span {
+      flex: 1;
+    }
+
+    .legend-labels {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.7rem;
+      color: var(--color-text-muted);
+    }
+
+    #map {
+      flex: 1;
+      min-height: 400px;
+    }
+
+    .map-loading {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      color: var(--color-text-muted);
+      font-size: 0.9rem;
+    }
+
+    @media (max-width: 768px) {
+      .map-container {
+        flex-direction: column;
+        height: auto;
+      }
+
+      .map-sidebar {
+        width: 100%;
+        min-width: 100%;
+        flex-direction: row;
+        flex-wrap: wrap;
+        border-right: none;
+        border-bottom: 1px solid var(--color-border);
+        padding: 0.75rem;
+        gap: 0.5rem;
+      }
+
+      .map-sidebar h2 {
+        width: 100%;
+      }
+
+      .legend-container {
+        width: 100%;
+        margin-top: 0;
+        border-top: none;
+      }
+
+      #map {
+        height: 60vh;
+      }
+    }
+  </style>
+
+  <div class="map-container">
+    <div class="map-sidebar">
+      <h2>Map Layer</h2>
+
+      <label class="layer-option active" data-layer="spending">
+        <input type="radio" name="map-layer" value="spending" checked />
+        Spending per Capita
+      </label>
+
+      <label class="layer-option" data-layer="readmission">
+        <input type="radio" name="map-layer" value="readmission" />
+        Readmission Rate
+      </label>
+
+      <label class="layer-option" data-layer="risk_score">
+        <input type="radio" name="map-layer" value="risk_score" />
+        HCC Risk Score
+      </label>
+
+      <label class="layer-option" data-layer="diabetes">
+        <input type="radio" name="map-layer" value="diabetes" />
+        Diabetes Prevalence
+      </label>
+
+      <label class="layer-option" data-layer="dual_eligible">
+        <input type="radio" name="map-layer" value="dual_eligible" />
+        Dual Eligible %
+      </label>
+
+      <div class="legend-container">
+        <h3>Legend</h3>
+        <div class="legend-bar" id="legend-bar"></div>
+        <div class="legend-labels" id="legend-labels">
+          <span>Low</span>
+          <span>High</span>
+        </div>
+      </div>
+    </div>
+
+    <div id="map">
+      <div class="map-loading" id="map-loading">Loading map data...</div>
+    </div>
+  </div>
+
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9/dist/leaflet.css" />
+
+  <script>
+    import L from 'leaflet';
+    import * as topojson from 'topojson-client';
+
+    // ── Layer configuration ──
+    const LAYERS: Record<string, {
+      label: string;
+      format: (v: number) => string;
+      unit: string;
+    }> = {
+      spending: {
+        label: 'Standardized Per Capita Spending',
+        format: (v) => '$' + Math.round(v).toLocaleString(),
+        unit: '$',
+      },
+      readmission: {
+        label: 'Acute Hospital Readmission Rate',
+        format: (v) => (v * 100).toFixed(1) + '%',
+        unit: '%',
+      },
+      risk_score: {
+        label: 'Average HCC Risk Score',
+        format: (v) => v.toFixed(2),
+        unit: '',
+      },
+      diabetes: {
+        label: 'Diabetes Prevalence',
+        format: (v) => v.toFixed(1) + '%',
+        unit: '%',
+      },
+      dual_eligible: {
+        label: 'Dual Eligible Beneficiaries',
+        format: (v) => (v * 100).toFixed(1) + '%',
+        unit: '%',
+      },
+    };
+
+    // ── Color palette (7 buckets, light yellow → dark red) ──
+    const COLORS = [
+      '#ffffcc',
+      '#ffeda0',
+      '#fed976',
+      '#feb24c',
+      '#fd8d3c',
+      '#f03b20',
+      '#bd0026',
+    ];
+
+    const NO_DATA_COLOR = '#e0e0e0';
+
+    // ── State ──
+    let currentLayer = 'spending';
+    let layerData: Record<string, number> = {};
+    let countyGeoJSON: any = null;
+    let stateGeoJSON: any = null;
+    let geoLayer: L.GeoJSON | null = null;
+    let stateLayer: L.GeoJSON | null = null;
+    let breaks: number[] = [];
+
+    // ── Initialize Leaflet map ──
+    const map = L.map('map', {
+      center: [39.5, -98.5],
+      zoom: 4,
+      minZoom: 3,
+      maxZoom: 10,
+      zoomControl: true,
+    });
+
+    // Tile layer (light basemap)
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png', {
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/">CARTO</a>',
+      maxZoom: 19,
+    }).addTo(map);
+
+    // Label layer on top of polygons
+    const labelPane = map.createPane('labels');
+    labelPane.style.zIndex = '650';
+    labelPane.style.pointerEvents = 'none';
+
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png', {
+      pane: 'labels',
+      maxZoom: 19,
+    }).addTo(map);
+
+    // ── Utility functions ──
+    function padFips(id: string | number): string {
+      return String(id).padStart(5, '0');
+    }
+
+    function getColor(value: number | undefined): string {
+      if (value === undefined || value === null) return NO_DATA_COLOR;
+      for (let i = 0; i < breaks.length; i++) {
+        if (value <= breaks[i]) return COLORS[i];
+      }
+      return COLORS[COLORS.length - 1];
+    }
+
+    function computeBreaks(data: Record<string, number>): number[] {
+      const values = Object.values(data).filter(v => v != null).sort((a, b) => a - b);
+      if (values.length === 0) return [];
+      const numBuckets = COLORS.length;
+      const result: number[] = [];
+      for (let i = 1; i <= numBuckets; i++) {
+        const idx = Math.min(Math.floor((i / numBuckets) * values.length), values.length - 1);
+        result.push(values[idx]);
+      }
+      return result;
+    }
+
+    function updateLegend() {
+      const legendBar = document.getElementById('legend-bar')!;
+      const legendLabels = document.getElementById('legend-labels')!;
+      const config = LAYERS[currentLayer];
+
+      legendBar.innerHTML = COLORS.map(c => `<span style="background:${c}"></span>`).join('');
+
+      if (breaks.length >= 2) {
+        legendLabels.innerHTML = `<span>${config.format(breaks[0])}</span><span>${config.format(breaks[breaks.length - 1])}</span>`;
+      }
+    }
+
+    function getCountyName(feature: any): string {
+      return feature.properties?.name || 'Unknown County';
+    }
+
+    function styleFeature(feature: any): L.PathOptions {
+      const fips = padFips(feature.id);
+      const value = layerData[fips];
+      return {
+        fillColor: getColor(value),
+        weight: 0.5,
+        opacity: 1,
+        color: '#999',
+        fillOpacity: 0.8,
+      };
+    }
+
+    function onEachFeature(feature: any, layer: L.Layer) {
+      const fips = padFips(feature.id);
+      const value = layerData[fips];
+      const config = LAYERS[currentLayer];
+      const countyName = getCountyName(feature);
+
+      (layer as any).on({
+        mouseover: (e: any) => {
+          const l = e.target;
+          l.setStyle({ weight: 2, color: '#333', fillOpacity: 0.9 });
+          l.bringToFront();
+          if (stateLayer) stateLayer.bringToFront();
+        },
+        mouseout: (e: any) => {
+          if (geoLayer) geoLayer.resetStyle(e.target);
+        },
+        click: () => {
+          const valueStr = value !== undefined ? config.format(value) : 'No data';
+          const popupContent = `
+            <div style="font-size:0.9rem;line-height:1.5;">
+              <strong>${countyName}</strong><br/>
+              FIPS: <code>${fips}</code><br/>
+              ${config.label}: <strong>${valueStr}</strong><br/>
+              <a href="/county/${fips}/" style="font-size:0.85rem;">Go to county page &rarr;</a>
+            </div>
+          `;
+          (layer as any).bindPopup(popupContent).openPopup();
+        },
+      });
+    }
+
+    function renderCounties() {
+      if (!countyGeoJSON) return;
+
+      if (geoLayer) {
+        map.removeLayer(geoLayer);
+      }
+
+      geoLayer = L.geoJSON(countyGeoJSON, {
+        style: styleFeature,
+        onEachFeature: onEachFeature,
+      }).addTo(map);
+
+      // Ensure state borders stay on top
+      if (stateLayer) stateLayer.bringToFront();
+    }
+
+    async function loadLayerData(layerName: string) {
+      const resp = await fetch(`/map/${layerName}.json`);
+      if (!resp.ok) {
+        console.error(`Failed to load /map/${layerName}.json`);
+        return;
+      }
+      layerData = await resp.json();
+      breaks = computeBreaks(layerData);
+      updateLegend();
+      renderCounties();
+    }
+
+    // ── Initialize ──
+    async function init() {
+      const loadingEl = document.getElementById('map-loading');
+
+      try {
+        // Load county TopoJSON
+        const [countyResp, stateResp] = await Promise.all([
+          fetch('/geo/counties-10m.json'),
+          fetch('/geo/states-10m.json'),
+        ]);
+
+        if (!countyResp.ok) throw new Error('Failed to load county boundaries');
+
+        const countyTopo = await countyResp.json();
+        countyGeoJSON = topojson.feature(countyTopo, countyTopo.objects.counties);
+
+        // Load state boundaries for borders
+        if (stateResp.ok) {
+          const stateTopo = await stateResp.json();
+          stateGeoJSON = topojson.feature(stateTopo, stateTopo.objects.states);
+          stateLayer = L.geoJSON(stateGeoJSON as any, {
+            style: {
+              fillColor: 'transparent',
+              fillOpacity: 0,
+              weight: 1.5,
+              color: '#333',
+              opacity: 0.6,
+            },
+            interactive: false,
+          }).addTo(map);
+        }
+
+        // Load initial layer data
+        await loadLayerData(currentLayer);
+
+        if (loadingEl) loadingEl.style.display = 'none';
+      } catch (err) {
+        console.error('Map init error:', err);
+        if (loadingEl) loadingEl.textContent = 'Error loading map data. Please try refreshing.';
+      }
+    }
+
+    // ── Layer switching ──
+    const layerOptions = document.querySelectorAll('.layer-option');
+    layerOptions.forEach(opt => {
+      const input = opt.querySelector('input[type="radio"]') as HTMLInputElement;
+      if (!input) return;
+
+      opt.addEventListener('click', async () => {
+        // Update active state
+        layerOptions.forEach(o => o.classList.remove('active'));
+        opt.classList.add('active');
+        input.checked = true;
+
+        currentLayer = input.value;
+        await loadLayerData(currentLayer);
+      });
+    });
+
+    init();
+  </script>
+</BaseLayout>

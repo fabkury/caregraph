@@ -92,6 +92,9 @@ function badgeClass(type: string): string {
     <a href={csvDataUri} download={`aco_${id}_mssp_performance.csv`} class="btn">
       Download CSV
     </a>
+    <button class="btn" id="pin-btn" data-entity-type="aco" data-entity-id={id} data-entity-name={name}>
+      Pin to Workspace
+    </button>
   </div>
 
   <!-- Explore mode -->
@@ -245,6 +248,41 @@ function badgeClass(type: string): string {
           rows.forEach(row => tbody.appendChild(row));
         });
       });
+    }
+  </script>
+
+  <script>
+    import { isPinned, addPin, removePin } from '../../scripts/workspace';
+
+    const pinBtn = document.getElementById('pin-btn') as HTMLButtonElement | null;
+    if (pinBtn) {
+      const entityType = pinBtn.dataset.entityType!;
+      const entityId = pinBtn.dataset.entityId!;
+      const entityName = pinBtn.dataset.entityName!;
+
+      function updatePinLabel() {
+        if (!pinBtn) return;
+        if (isPinned(entityType, entityId)) {
+          pinBtn.textContent = 'Unpin from Workspace';
+          pinBtn.style.borderColor = 'var(--color-warning)';
+          pinBtn.style.color = 'var(--color-warning)';
+        } else {
+          pinBtn.textContent = 'Pin to Workspace';
+          pinBtn.style.borderColor = '';
+          pinBtn.style.color = '';
+        }
+      }
+
+      pinBtn.addEventListener('click', () => {
+        if (isPinned(entityType, entityId)) {
+          removePin(entityType, entityId);
+        } else {
+          addPin(entityType, entityId, entityName);
+        }
+        updatePinLabel();
+      });
+
+      updatePinLabel();
     }
   </script>
 </BaseLayout>
