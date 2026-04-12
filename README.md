@@ -44,7 +44,7 @@ bash deploy/deploy.sh
 
 ## Full specification
 
-See [cms-unified-vbc-tool-spec.md](cms-unified-vbc-tool-spec.md) for the complete product specification.
+See [docs/cms-unified-vbc-tool-spec.md](docs/cms-unified-vbc-tool-spec.md) for the complete product specification.
 
 ## How to cite
 

@@ -2,7 +2,7 @@
 
 ## What is CareGraph?
 
-CareGraph is a free, open-source, ad-free static website that unifies 100+ publicly available CMS (Centers for Medicare & Medicaid Services) datasets into a single richly interlinked exploration tool. It precomputes cross-dataset joins offline and serves the results as static HTML pages with JSON data manifests. The full product specification lives at `cms-unified-vbc-tool-spec.md`.
+CareGraph is a free, open-source, ad-free static website that unifies 100+ publicly available CMS (Centers for Medicare & Medicaid Services) datasets into a single richly interlinked exploration tool. It precomputes cross-dataset joins offline and serves the results as static HTML pages with JSON data manifests. The full product specification lives at `docs/cms-unified-vbc-tool-spec.md`.
 
 ## v1 starting entity subset
 
