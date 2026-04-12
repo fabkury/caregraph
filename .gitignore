@@ -30,6 +30,10 @@ Desktop.ini
 *.swo
 *~
 
+# === Playwright ===
+test-results/
+playwright-report/
+
 # === IDE ===
 .vscode/
 .idea/
