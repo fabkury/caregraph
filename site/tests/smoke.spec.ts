@@ -513,7 +513,7 @@ test.describe('About page', () => {
   test('about page loads with pitch text', async ({ page }) => {
     await page.goto('/about/');
     await expect(page.locator('h1')).toContainText('About');
-    await expect(page.locator('body')).toContainText('the public Medicare data you already paid for');
+    await expect(page.locator('body')).toContainText('Public CMS Data');
   });
 
   test('about page has citation section', async ({ page }) => {

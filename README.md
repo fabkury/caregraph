@@ -3,7 +3,7 @@
 [![Status: Pre-Alpha](https://img.shields.io/badge/status-pre--alpha-orange)]()
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-**The public Medicare data you already paid for, finally connected.**
+**Public CMS Data**
 
 CareGraph is a free, open-source, ad-free website that unifies 100+ publicly available CMS datasets into a single richly interlinked exploration tool. It serves value-based care leaders, researchers, journalists, and clinicians who need scorecards, benchmarks, filterable tables, full methodology, and downloadable data -- all cross-linked through the identifiers (CCN, NPI, TIN, FIPS) that tie Medicare's data ecosystem together.
 
