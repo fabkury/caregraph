@@ -468,3 +468,27 @@ h1, h2, h3, h4, h5, h6 {
     grid-template-columns: 1fr;
   }
 }
+
+/* SNF & ACO badges */
+.badge-snf { background: #ede9fe; color: #5b21b6; }
+.badge-aco { background: #fff7ed; color: #9a3412; }
+
+/* Related entities */
+.related-list { list-style: none; padding: 0; }
+.related-list li { padding: 0.4rem 0; border-bottom: 1px solid var(--color-border-light); }
+.related-list li:last-child { border-bottom: none; }
+.related-context { color: var(--color-text-muted); font-size: 0.85rem; margin-left: 0.5rem; }
+
+/* Search */
+.nav-search { display: flex; align-items: center; margin-left: auto; }
+.nav-search input { padding: 0.3rem 0.6rem; border: 1px solid var(--color-border); border-radius: 4px; font-size: 0.85rem; width: 200px; }
+.search-results { max-width: 800px; margin: 0 auto; }
+.search-group { margin-bottom: 2rem; }
+.search-group h2 { font-size: 1.1rem; color: var(--color-text-muted); margin-bottom: 0.5rem; }
+.search-result { display: block; padding: 0.5rem 0; border-bottom: 1px solid var(--color-border-light); }
+.search-result:hover { background: var(--color-border-light); }
+.search-result .name { font-weight: 600; }
+.search-result .secondary { color: var(--color-text-muted); font-size: 0.85rem; }
+
+/* Collapsible sections */
+.show-more-btn { color: var(--color-primary); cursor: pointer; font-size: 0.85rem; padding: 0.25rem 0; border: none; background: none; }

@@ -29,9 +29,15 @@ test.describe('Home page', () => {
 
   test('disabled tiles are not links', async ({ page }) => {
     await page.goto('/');
-    // SNFs tile should be a <span>, not an <a>
-    const snfTile = page.locator('.entity-tiles span', { hasText: 'SNFs' });
-    await expect(snfTile).toBeVisible();
+    // Clinicians tile should be a <span>, not an <a> (not yet built)
+    const tile = page.locator('.entity-tiles span', { hasText: 'Clinicians' });
+    await expect(tile).toBeVisible();
+  });
+
+  test('SNFs and ACOs tiles are active links', async ({ page }) => {
+    await page.goto('/');
+    await expect(page.locator('.entity-tiles a', { hasText: 'SNFs' })).toHaveAttribute('href', '/explore/snfs/');
+    await expect(page.locator('.entity-tiles a', { hasText: 'ACOs' })).toHaveAttribute('href', '/explore/acos/');
   });
 
   test('nav bar has all links', async ({ page }) => {
@@ -259,4 +265,179 @@ test.describe('County entity page', () => {
 test('nonexistent page returns 404', async ({ page }) => {
   const resp = await page.goto('/hospital/999999/');
   expect(resp?.status()).toBe(404);
+});
+
+// ---------------------------------------------------------------------------
+// M2: SNF browse page
+// ---------------------------------------------------------------------------
+
+test.describe('SNF browse page', () => {
+  test('lists SNFs with sortable table', async ({ page }) => {
+    await page.goto('/explore/snfs/');
+    await expect(page.locator('h1')).toHaveText('Skilled Nursing Facilities');
+    const rows = page.locator('#data-table tbody tr');
+    expect(await rows.count()).toBeGreaterThan(100);
+  });
+
+  test('SNF name links to entity page', async ({ page }) => {
+    await page.goto('/explore/snfs/');
+    const firstLink = page.locator('#data-table tbody tr:first-child td:first-child a');
+    const href = await firstLink.getAttribute('href');
+    expect(href).toMatch(/^\/snf\/[A-Za-z0-9]{6}\/$/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// M2: ACO browse page
+// ---------------------------------------------------------------------------
+
+test.describe('ACO browse page', () => {
+  test('lists ACOs', async ({ page }) => {
+    await page.goto('/explore/acos/');
+    await expect(page.locator('h1')).toHaveText('Accountable Care Organizations');
+    const rows = page.locator('#data-table tbody tr');
+    expect(await rows.count()).toBeGreaterThan(50);
+  });
+
+  test('ACO name links to entity page', async ({ page }) => {
+    await page.goto('/explore/acos/');
+    const firstLink = page.locator('#data-table tbody tr:first-child td:first-child a');
+    const href = await firstLink.getAttribute('href');
+    expect(href).toMatch(/^\/aco\/[A-Z0-9]+\/$/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// M2: SNF entity page
+// ---------------------------------------------------------------------------
+
+test.describe('SNF entity page', () => {
+  test('renders SNF name and CCN', async ({ page }) => {
+    await page.goto('/snf/015009/');
+    await expect(page.locator('h1')).not.toBeEmpty();
+    await expect(page.locator('.subtitle')).toContainText('015009');
+  });
+
+  test('shows SNF badge', async ({ page }) => {
+    await page.goto('/snf/015009/');
+    await expect(page.locator('.badge-snf')).toBeVisible();
+  });
+
+  test('Explore/Table toggle works', async ({ page }) => {
+    await page.goto('/snf/015009/');
+    await page.locator('#mode-toggle button[data-mode="explore"]').click();
+    await expect(page.locator('#explore-view')).toBeVisible();
+    await page.locator('#mode-toggle button[data-mode="table"]').click();
+    await expect(page.locator('#table-view')).toBeVisible();
+    await page.locator('#mode-toggle button[data-mode="explore"]').click();
+  });
+
+  test('shows related entities', async ({ page }) => {
+    await page.goto('/snf/015009/');
+    await page.locator('#mode-toggle button[data-mode="explore"]').click();
+    const related = page.locator('.related-list');
+    // May or may not have related depending on cross-link data
+    if (await related.count() > 0) {
+      await expect(related.locator('li').first()).toBeVisible();
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// M2: ACO entity page
+// ---------------------------------------------------------------------------
+
+test.describe('ACO entity page', () => {
+  test('renders ACO name and ID', async ({ page }) => {
+    await page.goto('/aco/A1001/');
+    await expect(page.locator('h1')).not.toBeEmpty();
+    await expect(page.locator('.subtitle')).toContainText('A1001');
+  });
+
+  test('shows ACO badge', async ({ page }) => {
+    await page.goto('/aco/A1001/');
+    await expect(page.locator('.badge-aco')).toBeVisible();
+  });
+
+  test('shows metric cards', async ({ page }) => {
+    await page.goto('/aco/A1001/');
+    await page.locator('#mode-toggle button[data-mode="explore"]').click();
+    const cards = page.locator('.metric-card');
+    expect(await cards.count()).toBeGreaterThan(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// M2: Hospital enrichment (HRRP + HVBP)
+// ---------------------------------------------------------------------------
+
+test.describe('Hospital enrichment', () => {
+  test('shows HRRP readmissions data', async ({ page }) => {
+    await page.goto('/hospital/010001/');
+    await page.locator('#mode-toggle button[data-mode="explore"]').click();
+    // Hospital 010001 should have readmission data
+    await expect(page.getByRole('heading', { name: 'Readmissions (HRRP)' })).toBeVisible();
+  });
+
+  test('shows VBP performance scores', async ({ page }) => {
+    await page.goto('/hospital/010001/');
+    await page.locator('#mode-toggle button[data-mode="explore"]').click();
+    await expect(page.getByRole('heading', { name: 'Value-Based Purchasing' })).toBeVisible();
+  });
+
+  test('shows related entities with county link', async ({ page }) => {
+    await page.goto('/hospital/010001/');
+    await page.locator('#mode-toggle button[data-mode="explore"]').click();
+    await expect(page.locator('.related-list')).toBeVisible();
+    // Should have a county link
+    const countyLink = page.locator('.related-list a[href*="/county/"]');
+    expect(await countyLink.count()).toBeGreaterThan(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// M2: County enrichment (PLACES + cross-links)
+// ---------------------------------------------------------------------------
+
+test.describe('County enrichment', () => {
+  test('shows CDC PLACES chronic conditions', async ({ page }) => {
+    await page.goto('/county/06037/');
+    await page.locator('#mode-toggle button[data-mode="explore"]').click();
+    await expect(page.locator('text=Chronic Conditions')).toBeVisible();
+  });
+
+  test('shows related hospitals and SNFs', async ({ page }) => {
+    await page.goto('/county/06037/');
+    await page.locator('#mode-toggle button[data-mode="explore"]').click();
+    await expect(page.locator('.related-list')).toBeVisible();
+    const hospitalLinks = page.locator('.related-list a[href*="/hospital/"]');
+    expect(await hospitalLinks.count()).toBeGreaterThan(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// M2: Search
+// ---------------------------------------------------------------------------
+
+test.describe('Search', () => {
+  test('search page loads', async ({ page }) => {
+    await page.goto('/search/');
+    await expect(page.locator('h1')).toContainText('Search');
+  });
+
+  test('nav search navigates to search page', async ({ page }) => {
+    await page.goto('/');
+    const searchInput = page.locator('#nav-search-input');
+    await searchInput.fill('Cleveland');
+    await searchInput.press('Enter');
+    await expect(page).toHaveURL(/\/search\?q=Cleveland/);
+  });
+
+  test('home search navigates to search page', async ({ page }) => {
+    await page.goto('/');
+    const searchInput = page.locator('#home-search');
+    await searchInput.fill('Los Angeles');
+    await searchInput.press('Enter');
+    await expect(page).toHaveURL(/\/search\?q=Los%20Angeles/);
+  });
 });

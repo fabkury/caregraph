@@ -2,9 +2,12 @@
 CareGraph ETL — Top-level orchestrator.
 
 Runs the full ETL pipeline:
-  1. Acquire raw datasets from data.cms.gov
-  2. Build entity page manifests (normalize + validate + provenance)
-  3. Write output to site_data/ for the Astro frontend build
+  1. Acquire raw datasets from data.cms.gov and data.cdc.gov
+  2. Build base entity page manifests (hospitals, counties, SNFs, ACOs)
+  3. Enrich entities (HRRP, HVBP, FIPS, CDC PLACES)
+  4. Build cross-links between entities
+  5. Build search index
+  6. Write output index to site_data/
 
 Usage:
     python etl/run.py
@@ -25,12 +28,18 @@ sys.path.insert(0, str(REPO_ROOT))
 from etl.acquire.download import acquire_all, DATASETS
 from etl.build.build_hospitals import build_hospitals
 from etl.build.build_counties import build_counties
+from etl.build.build_snfs import build_snfs
+from etl.build.build_acos import build_acos
+from etl.build.enrich_hospitals import enrich_hospitals
+from etl.build.enrich_counties import enrich_counties
+from etl.build.build_crosslinks import build_crosslinks
+from etl.build.build_search_index import build_search_index
 
 
 def main() -> None:
     start = time.time()
     print("=" * 60)
-    print("CareGraph ETL — M1 Skeleton")
+    print("CareGraph ETL — Phase 1 (M1 + M2)")
     print("=" * 60)
 
     raw_dir = REPO_ROOT / "data" / "raw"
@@ -44,26 +53,67 @@ def main() -> None:
 
     today = date.today()
 
-    # ── Step 1: Acquire ──────────────────────────────────────────
+    # ── Step 1: Acquire all datasets ────────────────────────────────
     print("\n[Step 1] Acquiring raw datasets...")
     downloaded = acquire_all(raw_dir)
     for ds_id, path in downloaded.items():
         print(f"  {DATASETS[ds_id]['name']}: {path}")
 
-    # ── Step 2: Build hospital manifests ─────────────────────────
+    # ── Step 2: Build hospital manifests (base) ─────────────────────
     print("\n[Step 2] Building hospital page manifests...")
     hospital_out = site_data_dir / "hospital"
     hospital_csv = downloaded["xubh-q36u"]
     hospital_count = build_hospitals(hospital_csv, hospital_out, today)
 
-    # ── Step 3: Build county manifests ───────────────────────────
+    # ── Step 3: Build county manifests (base) ───────────────────────
     print("\n[Step 3] Building county page manifests...")
     county_out = site_data_dir / "county"
     county_csv = downloaded["geo-var-county"]
     county_count = build_counties(county_csv, county_out, today)
 
-    # ── Step 4: Write manifest index ─────────────────────────────
-    print("\n[Step 4] Writing manifest index...")
+    # ── Step 4: Build SNF manifests ─────────────────────────────────
+    print("\n[Step 4] Building SNF page manifests...")
+    snf_out = site_data_dir / "snf"
+    snf_csv = downloaded["nh-provider-info"]
+    snf_count = build_snfs(snf_csv, snf_out, today)
+
+    # ── Step 5: Build ACO manifests ─────────────────────────────────
+    print("\n[Step 5] Building ACO page manifests...")
+    aco_out = site_data_dir / "aco"
+    aco_csv = downloaded["mssp-performance"]
+    aco_count = build_acos(aco_csv, aco_out, today)
+
+    # ── Step 6: Enrich hospitals (HRRP + HVBP + FIPS) ──────────────
+    print("\n[Step 6] Enriching hospital manifests...")
+    hrrp_csv = downloaded["hrrp"]
+    hvbp_csv = downloaded["hvbp-tps"]
+    hospital_enriched = enrich_hospitals(
+        hospital_dir=hospital_out,
+        county_dir=county_out,
+        hrrp_csv_path=hrrp_csv,
+        hvbp_csv_path=hvbp_csv,
+        download_date=today,
+    )
+
+    # ── Step 7: Enrich counties (CDC PLACES) ────────────────────────
+    print("\n[Step 7] Enriching county manifests with CDC PLACES...")
+    places_csv = downloaded["cdc-places"]
+    county_enriched = enrich_counties(
+        county_dir=county_out,
+        places_csv_path=places_csv,
+        download_date=today,
+    )
+
+    # ── Step 8: Build cross-links ───────────────────────────────────
+    print("\n[Step 8] Building cross-links between entities...")
+    crosslink_counts = build_crosslinks(site_data_dir)
+
+    # ── Step 9: Build search index ──────────────────────────────────
+    print("\n[Step 9] Building search index...")
+    search_count = build_search_index(site_data_dir)
+
+    # ── Step 10: Write manifest index ───────────────────────────────
+    print("\n[Step 10] Writing manifest index...")
     index = {
         "generated": today.isoformat(),
         "entities": {
@@ -72,13 +122,34 @@ def main() -> None:
                 "path": "hospital/",
                 "dataset": "Hospital General Information",
                 "dataset_id": "xubh-q36u",
+                "enriched_with": ["hrrp", "hvbp-tps"],
+                "enriched_count": hospital_enriched,
             },
             "county": {
                 "count": county_count,
                 "path": "county/",
                 "dataset": "Medicare Geographic Variation by County",
                 "dataset_id": "geo-var-county",
+                "enriched_with": ["cdc-places"],
+                "enriched_count": county_enriched,
             },
+            "snf": {
+                "count": snf_count,
+                "path": "snf/",
+                "dataset": "Nursing Home Provider Info",
+                "dataset_id": "nh-provider-info",
+            },
+            "aco": {
+                "count": aco_count,
+                "path": "aco/",
+                "dataset": "MSSP ACO Performance PY2024",
+                "dataset_id": "mssp-performance",
+            },
+        },
+        "crosslinks": crosslink_counts,
+        "search_index": {
+            "count": search_count,
+            "path": "search-index.json",
         },
     }
     index_path = site_data_dir / "index.json"
@@ -86,12 +157,15 @@ def main() -> None:
         json.dump(index, f, indent=2)
     print(f"  -> {index_path}")
 
-    # ── Summary ──────────────────────────────────────────────────
+    # ── Summary ──────────────────────────────────────────────────────
     elapsed = time.time() - start
     print("\n" + "=" * 60)
     print(f"ETL complete in {elapsed:.1f}s")
-    print(f"  Hospitals: {hospital_count:,} manifests")
-    print(f"  Counties:  {county_count:,} manifests")
+    print(f"  Hospitals: {hospital_count:,} manifests ({hospital_enriched} enriched)")
+    print(f"  Counties:  {county_count:,} manifests ({county_enriched} enriched)")
+    print(f"  SNFs:      {snf_count:,} manifests")
+    print(f"  ACOs:      {aco_count:,} manifests")
+    print(f"  Search:    {search_count:,} index entries")
     print(f"  Output:    {site_data_dir}")
     print("=" * 60)
 

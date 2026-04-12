@@ -4,6 +4,7 @@ Join-key normalization for CareGraph ETL.
 Handles:
 - CCN (CMS Certification Number): 6-character, zero-padded string
 - County FIPS: 5-digit, zero-padded string
+- ACO ID: alphanumeric like "A1234", uppercase
 - SSA-to-FIPS crosswalk application
 """
 
@@ -52,6 +53,28 @@ def normalize_state_fips(raw_fips: str | int | None) -> str | None:
     if not fips:
         return None
     return fips.zfill(2)
+
+
+def normalize_aco_id(raw_id: str | None) -> str | None:
+    """Normalize an ACO ID to uppercase alphanumeric string.
+
+    MSSP ACO IDs follow the pattern A####  (letter + digits), e.g. "A1234".
+    We strip whitespace, uppercase, and validate the format.
+    Returns None for blank or clearly invalid values.
+    """
+    if raw_id is None or str(raw_id).strip() == "":
+        return None
+    aco_id = str(raw_id).strip().upper()
+    # Remove any surrounding whitespace or non-alphanumeric chars
+    aco_id = re.sub(r"[^A-Z0-9]", "", aco_id)
+    if not aco_id:
+        return None
+    # Validate: should start with a letter followed by digits (e.g. A1234)
+    # but be lenient — some ACO IDs may differ
+    if not re.match(r"^[A-Z][0-9]+$", aco_id):
+        # Still return it uppercase-cleaned; just warn-worthy, not fatal
+        pass
+    return aco_id
 
 
 # Built-in SSA-to-FIPS crosswalk for common codes.

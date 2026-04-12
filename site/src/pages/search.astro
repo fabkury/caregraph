@@ -1,0 +1,140 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+---
+
+<BaseLayout title="Search" description="Search CareGraph for hospitals, SNFs, counties, and ACOs">
+  <div class="page-header">
+    <h1>Search</h1>
+    <p class="subtitle" id="search-status">Loading search index...</p>
+  </div>
+
+  <div class="search-box" style="margin-bottom: 2rem;">
+    <input
+      type="text"
+      class="search-input"
+      id="search-input"
+      placeholder="Search hospitals, SNFs, counties, ACOs..."
+      autofocus
+    />
+  </div>
+
+  <div class="search-results" id="search-results"></div>
+
+  <script>
+    const entityUrlMap: Record<string, (id: string) => string> = {
+      hospital: (id) => `/hospital/${id}/`,
+      snf: (id) => `/snf/${id}/`,
+      county: (id) => `/county/${id}/`,
+      aco: (id) => `/aco/${id}/`,
+    };
+
+    const entityLabels: Record<string, string> = {
+      hospital: 'Hospitals',
+      snf: 'Skilled Nursing Facilities',
+      county: 'Counties',
+      aco: 'Accountable Care Organizations',
+    };
+
+    interface SearchEntry {
+      id: string;
+      type: string;
+      name: string;
+      secondary: string;
+      identifier: string;
+    }
+
+    let searchIndex: SearchEntry[] = [];
+
+    async function loadIndex() {
+      try {
+        const resp = await fetch('/search-index.json');
+        searchIndex = await resp.json();
+        (document.getElementById('search-status') as HTMLElement).textContent =
+          `${searchIndex.length.toLocaleString()} entities indexed`;
+        // Run initial search from URL
+        const params = new URLSearchParams(window.location.search);
+        const q = params.get('q') || '';
+        if (q) {
+          (document.getElementById('search-input') as HTMLInputElement).value = q;
+          runSearch(q);
+        }
+      } catch (e) {
+        (document.getElementById('search-status') as HTMLElement).textContent =
+          'Could not load search index.';
+      }
+    }
+
+    function runSearch(query: string) {
+      const results = document.getElementById('search-results')!;
+      if (!query.trim()) {
+        results.innerHTML = '';
+        return;
+      }
+
+      const q = query.toLowerCase();
+      const matches = searchIndex.filter(entry =>
+        entry.name.toLowerCase().includes(q) ||
+        entry.identifier.toLowerCase().includes(q)
+      );
+
+      // Group by type
+      const groups: Record<string, SearchEntry[]> = {};
+      for (const m of matches.slice(0, 200)) {
+        if (!groups[m.type]) groups[m.type] = [];
+        groups[m.type].push(m);
+      }
+
+      if (Object.keys(groups).length === 0) {
+        results.innerHTML = '<p style="color: var(--color-text-muted);">No results found.</p>';
+        return;
+      }
+
+      let html = '';
+      const typeOrder = ['hospital', 'snf', 'county', 'aco'];
+      for (const type of typeOrder) {
+        const items = groups[type];
+        if (!items || items.length === 0) continue;
+        html += `<div class="search-group">`;
+        html += `<h2>${entityLabels[type] || type} (${items.length})</h2>`;
+        for (const item of items) {
+          const urlFn = entityUrlMap[item.type];
+          const href = urlFn ? urlFn(item.identifier) : '#';
+          html += `<a class="search-result" href="${href}">`;
+          html += `<span class="name">${escapeHtml(item.name)}</span>`;
+          html += `<span class="secondary"> &middot; ${escapeHtml(item.identifier)}`;
+          if (item.secondary) html += ` &middot; ${escapeHtml(item.secondary)}`;
+          html += `</span>`;
+          html += `</a>`;
+        }
+        html += `</div>`;
+      }
+
+      if (matches.length > 200) {
+        html += `<p style="color: var(--color-text-muted);">Showing first 200 of ${matches.length.toLocaleString()} results. Refine your query for better results.</p>`;
+      }
+
+      results.innerHTML = html;
+    }
+
+    function escapeHtml(str: string): string {
+      return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    // Wire up input
+    const input = document.getElementById('search-input') as HTMLInputElement;
+    let debounceTimer: ReturnType<typeof setTimeout>;
+    input.addEventListener('input', () => {
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        const q = input.value;
+        // Update URL without reload
+        const url = new URL(window.location.href);
+        if (q) { url.searchParams.set('q', q); } else { url.searchParams.delete('q'); }
+        window.history.replaceState({}, '', url.toString());
+        runSearch(q);
+      }, 200);
+    });
+
+    loadIndex();
+  </script>
+</BaseLayout>

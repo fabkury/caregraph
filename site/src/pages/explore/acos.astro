@@ -1,0 +1,101 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import fs from 'node:fs';
+import path from 'node:path';
+
+const siteDataDir = path.resolve(process.cwd(), '..', 'site_data', 'aco');
+const acos: Array<{
+  id: string; name: string; state: string; track: string;
+  beneficiaries: number | null; qualityScore: number | null; savingsRate: number | null;
+}> = [];
+
+if (fs.existsSync(siteDataDir)) {
+  const files = fs.readdirSync(siteDataDir).filter((f: string) => f.endsWith('.json'));
+  for (const file of files) {
+    const m = JSON.parse(fs.readFileSync(path.join(siteDataDir, file), 'utf-8'));
+    const metrics = m.data?.mssp_performance?.metrics || {};
+    acos.push({
+      id: m.aco_id,
+      name: m.aco_name,
+      state: m.state || '',
+      track: m.current_track || '',
+      beneficiaries: metrics.N_AB?.value ?? null,
+      qualityScore: metrics.QualScore?.value ?? null,
+      savingsRate: metrics.Sav_rate?.value ?? null,
+    });
+  }
+}
+
+acos.sort((a, b) => a.name.localeCompare(b.name));
+
+function fmt(val: number | null, prefix = '', suffix = ''): string {
+  if (val === null) return '\u2014';
+  return prefix + val.toLocaleString(undefined, { maximumFractionDigits: 2 }) + suffix;
+}
+---
+
+<BaseLayout title="ACOs" description="Browse all ACOs on CareGraph">
+  <div class="page-header">
+    <h1>Accountable Care Organizations</h1>
+    <p class="subtitle">{acos.length.toLocaleString()} ACOs</p>
+  </div>
+
+  <div class="card">
+    <div style="overflow-x: auto;">
+      <table class="data-table" id="data-table">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>ACO ID</th>
+            <th>State</th>
+            <th>Track</th>
+            <th>Beneficiaries</th>
+            <th>Quality Score</th>
+            <th>Savings Rate</th>
+          </tr>
+        </thead>
+        <tbody>
+          {acos.map(a => (
+            <tr>
+              <td><a href={`/aco/${a.id}/`}>{a.name}</a></td>
+              <td><code>{a.id}</code></td>
+              <td>{a.state || '\u2014'}</td>
+              <td>{a.track || '\u2014'}</td>
+              <td>{fmt(a.beneficiaries)}</td>
+              <td>{fmt(a.qualityScore)}</td>
+              <td>{fmt(a.savingsRate, '', '%')}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <script>
+    const table = document.getElementById('data-table') as HTMLTableElement | null;
+    if (table) {
+      const headers = table.querySelectorAll('th');
+      headers.forEach((header, index) => {
+        header.addEventListener('click', () => {
+          const tbody = table.querySelector('tbody');
+          if (!tbody) return;
+          const rows = Array.from(tbody.querySelectorAll('tr'));
+          const ascending = header.getAttribute('data-sort') !== 'asc';
+          headers.forEach(h => h.removeAttribute('data-sort'));
+          header.setAttribute('data-sort', ascending ? 'asc' : 'desc');
+          rows.sort((a, b) => {
+            const aVal = a.cells[index]?.textContent || '';
+            const bVal = b.cells[index]?.textContent || '';
+            const aNum = parseFloat(aVal.replace(/[$,%]/g, ''));
+            const bNum = parseFloat(bVal.replace(/[$,%]/g, ''));
+            if (!isNaN(aNum) && !isNaN(bNum)) {
+              return ascending ? aNum - bNum : bNum - aNum;
+            }
+            return ascending ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+          });
+          rows.forEach(row => tbody.appendChild(row));
+        });
+      });
+    }
+  </script>
+</BaseLayout>

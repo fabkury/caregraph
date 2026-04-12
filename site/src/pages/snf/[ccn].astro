@@ -4,8 +4,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 export function getStaticPaths() {
-  const siteDataDir = path.resolve(process.cwd(), '..', 'site_data', 'county');
-  const paths: Array<{ params: { fips: string }; props: { manifest: any } }> = [];
+  const siteDataDir = path.resolve(process.cwd(), '..', 'site_data', 'snf');
+  const paths: Array<{ params: { ccn: string }; props: { manifest: any } }> = [];
 
   if (!fs.existsSync(siteDataDir)) return paths;
 
@@ -13,7 +13,7 @@ export function getStaticPaths() {
   for (const file of files) {
     const manifest = JSON.parse(fs.readFileSync(path.join(siteDataDir, file), 'utf-8'));
     paths.push({
-      params: { fips: manifest.fips },
+      params: { ccn: manifest.ccn },
       props: { manifest },
     });
   }
@@ -22,55 +22,36 @@ export function getStaticPaths() {
 }
 
 const { manifest } = Astro.props;
-const { fips } = Astro.params;
+const { ccn } = Astro.params;
 
-const name = manifest.county_name;
-const state = manifest.state;
-const geoVar = manifest.data?.geographic_variation || {};
-const metrics = geoVar.metrics || {};
-const rawData = geoVar.raw || {};
+const name = manifest.provider_name;
+const providerInfo = manifest.data?.provider_info || {};
 
-// Key metrics to highlight in Explore mode
-const highlightMetrics = [
-  { key: 'TOT_MDCR_STDZD_PYMT_PC', format: 'dollar' },
-  { key: 'TOT_MDCR_PYMT_PC', format: 'dollar' },
-  { key: 'BENE_AVG_RISK_SCRE', format: 'decimal' },
-  { key: 'BENE_AVG_AGE', format: 'decimal' },
-  { key: 'ACUTE_HOSP_READMSN_PCT', format: 'percent' },
-  { key: 'ER_VISITS_PER_1000_BENES', format: 'decimal' },
-  { key: 'BENE_DUAL_PCT', format: 'percent' },
-  { key: 'MA_PRTCPTN_RATE', format: 'percent' },
-  { key: 'IP_MDCR_STDZD_PYMT_PC', format: 'dollar' },
-  { key: 'SNF_MDCR_STDZD_PYMT_PC', format: 'dollar' },
-  { key: 'HH_MDCR_STDZD_PYMT_PC', format: 'dollar' },
-  { key: 'HOSPC_MDCR_STDZD_PYMT_PC', format: 'dollar' },
-];
-
-function formatValue(val: number, format: string): string {
-  if (format === 'dollar') return '$' + val.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 });
-  if (format === 'percent') return val.toFixed(1) + '%';
-  return val.toFixed(2);
+// Star ratings
+function parseRating(val: string | number | null | undefined): number | null {
+  if (val === null || val === undefined || val === '' || val === 'Not Available') return null;
+  const n = parseInt(String(val));
+  return isNaN(n) ? null : n;
 }
 
-// Build CSV for download
-const csvHeaders = Object.keys(rawData);
-const csvRow = csvHeaders.map((h: string) => `"${(rawData[h] || '').replace(/"/g, '""')}"`);
+const ratings = [
+  { label: 'Overall Rating', value: parseRating(manifest.overall_rating) },
+  { label: 'Health Inspection', value: parseRating(manifest.health_inspection_rating) },
+  { label: 'Quality Measures', value: parseRating(manifest.qm_rating) },
+  { label: 'Staffing', value: parseRating(manifest.staffing_rating) },
+];
+
+// Build the CSV data for download
+const csvHeaders = Object.keys(providerInfo);
+const csvRow = csvHeaders.map((h: string) => `"${(providerInfo[h] || '').replace(/"/g, '""')}"`);
 const csvContent = csvHeaders.join(',') + '\n' + csvRow.join(',');
 const csvDataUri = `data:text/csv;charset=utf-8,${encodeURIComponent(csvContent)}`;
 
+// Provenance info
 const provenance = manifest.provenance?.[0];
-
-// PLACES chronic conditions data
-const places = manifest.data?.places || null;
-const placesHighlight = [
-  'DIABETES', 'OBESITY', 'CHD', 'COPD', 'BPHIGH', 'STROKE',
-  'CANCER', 'DEPRESSION', 'CASTHMA', 'ARTHRITIS', 'HIGHCHOL', 'CSMOKING',
-];
 
 // Related entities
 const related = manifest.related || [];
-const relatedCapped = related.slice(0, 20);
-const relatedOverflow = related.length - 20;
 
 // Entity URL helpers
 function entityUrl(rel: { type: string; id: string }): string {
@@ -86,14 +67,15 @@ function badgeClass(type: string): string {
 }
 ---
 
-<BaseLayout title={`${name}, ${state}`} description={`${name}, ${state} (FIPS: ${fips}) — County profile on CareGraph`}>
+<BaseLayout title={name} description={`${name} (CCN: ${ccn}) — SNF profile on CareGraph`}>
   <div class="page-header">
     <div style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
-      <span class="badge badge-county">County</span>
-      <h1 style="margin: 0;">{name}, {state}</h1>
+      <span class="badge badge-snf">SNF</span>
+      <h1 style="margin: 0;">{name}</h1>
     </div>
     <p class="subtitle">
-      FIPS: <code>{fips}</code>
+      CCN: <code>{ccn}</code> &middot; {manifest.city}, {manifest.state} {manifest.zip_code}
+      {manifest.county_name && <span>&middot; {manifest.county_name} County</span>}
     </p>
   </div>
 
@@ -102,7 +84,7 @@ function badgeClass(type: string): string {
       <button class="active" data-mode="explore">Explore</button>
       <button data-mode="table">Table</button>
     </div>
-    <a href={csvDataUri} download={`county_${fips}_geographic_variation.csv`} class="btn">
+    <a href={csvDataUri} download={`snf_${ccn}_provider_info.csv`} class="btn">
       Download CSV
     </a>
   </div>
@@ -110,58 +92,51 @@ function badgeClass(type: string): string {
   <!-- Explore mode -->
   <div id="explore-view">
     <div class="card">
-      <h2>Geographic Variation — Key Metrics</h2>
-      <div class="metric-grid">
-        {highlightMetrics.map(({ key, format }) => {
-          const m = metrics[key];
-          if (!m) return null;
-          return (
-            <div class="metric-card">
-              <div class="label">{m.label}</div>
-              <div class="value">{formatValue(m.value, format)}</div>
-            </div>
-          );
-        })}
-      </div>
+      <h2>Overview</h2>
+      <dl class="kv-grid">
+        <dt>Address</dt>
+        <dd>{manifest.address}, {manifest.city}, {manifest.state} {manifest.zip_code}</dd>
+        <dt>Beds</dt>
+        <dd>{manifest.beds}</dd>
+        <dt>Average residents/day</dt>
+        <dd>{manifest.average_residents_per_day}</dd>
+        <dt>Ownership</dt>
+        <dd>{manifest.ownership_type}</dd>
+        <dt>Provider resides in hospital</dt>
+        <dd>{manifest.provider_resides_in_hospital === 'Y' ? 'Yes' : 'No'}</dd>
+      </dl>
     </div>
 
-    {Object.keys(metrics).length === 0 && (
-      <div class="card">
-        <p style="color: var(--color-text-muted);">
-          No Geographic Variation metrics available for this county.
-        </p>
-      </div>
-    )}
-
-    {places && Object.keys(places).length > 0 && (
-      <div class="card">
-        <h2>Chronic Conditions &amp; Health Indicators (CDC PLACES)</h2>
-        <div class="metric-grid">
-          {placesHighlight.map(key => {
-            const m = places[key];
-            if (!m) return null;
-            return (
-              <div class="metric-card">
-                <div class="label">{m.measure}</div>
-                <div class="value">{m.value}%</div>
-                <div style="font-size: 0.75rem; color: var(--color-text-muted);">
-                  CI: {m.low_ci}% &ndash; {m.high_ci}%
-                </div>
-              </div>
-            );
-          })}
-        </div>
-        <p style="font-size: 0.8rem; color: var(--color-text-muted); margin-top: 0.5rem;">
-          Source: CDC PLACES County-Level Data. Values are age-adjusted or crude prevalence estimates.
-        </p>
-      </div>
-    )}
+    <div class="card">
+      <h2>Ratings</h2>
+      <dl class="kv-grid">
+        {ratings.map(r => (
+          <>
+            <dt>{r.label}</dt>
+            <dd>
+              {r.value !== null ? (
+                <>
+                  <span class="star-rating">
+                    {[1,2,3,4,5].map(i => (
+                      <span class={i <= r.value! ? 'star-filled' : 'star-empty'}>&#9733;</span>
+                    ))}
+                  </span>
+                  ({r.value}/5)
+                </>
+              ) : (
+                <span style="color: var(--color-text-muted);">&mdash; Not Available</span>
+              )}
+            </dd>
+          </>
+        ))}
+      </dl>
+    </div>
 
     {related.length > 0 && (
       <div class="card">
         <h2>Related Entities</h2>
         <ul class="related-list">
-          {relatedCapped.map((rel: any) => (
+          {related.map((rel: any) => (
             <li>
               <span class={badgeClass(rel.type)}>{rel.type}</span>
               <a href={entityUrl(rel)}>{rel.name}</a>
@@ -169,11 +144,6 @@ function badgeClass(type: string): string {
             </li>
           ))}
         </ul>
-        {relatedOverflow > 0 && (
-          <p style="color: var(--color-text-muted); font-size: 0.85rem; margin-top: 0.5rem;">
-            and {relatedOverflow} more...
-          </p>
-        )}
       </div>
     )}
 
@@ -186,19 +156,9 @@ function badgeClass(type: string): string {
         Downloaded: {provenance?.download_date}.
         Rows in source: {provenance?.row_count?.toLocaleString()}.
       </p>
-      {manifest.provenance?.length > 1 && (
-        <p>
-          Additional data sources:
-          {manifest.provenance.slice(1).map((p: any) => (
-            <span> <strong>{p.dataset_name}</strong> ({p.vintage})</span>
-          ))}
-        </p>
-      )}
       <p>
-        <em>Medicare Geographic Variation</em> shows standardized per capita spending,
-        utilization, and demographic characteristics for Medicare fee-for-service beneficiaries
-        at the county level. Standardized payments remove geographic payment adjustments to
-        enable fair comparison across regions.
+        <em>Nursing Home Provider Info</em> contains information about nursing homes
+        including quality ratings, staffing, and inspection results from CMS.
       </p>
       <p>
         <a href="#">Full methodology &rarr;</a>
@@ -209,7 +169,7 @@ function badgeClass(type: string): string {
   <!-- Table mode -->
   <div id="table-view" style="display: none;">
     <div class="card">
-      <h2>All Geographic Variation Fields</h2>
+      <h2>All Provider Info Fields</h2>
       <div style="overflow-x: auto;">
         <table class="data-table" id="data-table">
           <thead>
@@ -219,7 +179,7 @@ function badgeClass(type: string): string {
             </tr>
           </thead>
           <tbody>
-            {Object.entries(rawData).map(([key, value]) => (
+            {Object.entries(providerInfo).map(([key, value]) => (
               <tr>
                 <td style="font-weight: 500;">{key}</td>
                 <td>{value as string || '\u2014'}</td>

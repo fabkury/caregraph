@@ -1,9 +1,11 @@
 """
-Acquire raw datasets from data.cms.gov.
+Acquire raw datasets from data.cms.gov and data.cdc.gov.
 
 CMS uses two API systems:
   - Provider Data API: /provider-data/api/1/datastore/query/{id}/0
   - CMS Data API: /data-api/v1/dataset/{uuid}/data
+
+CDC PLACES uses the Socrata (SODA) API with $limit/$offset pagination.
 
 For reliability, we prefer direct CSV bulk download URLs when available,
 falling back to paginated API calls.
@@ -19,31 +21,72 @@ from pathlib import Path
 
 import httpx
 
-# Datasets for M1 — each entry specifies the download strategy
+# Datasets — each entry specifies the download strategy
 DATASETS: dict[str, dict] = {
+    # ── M1 datasets ─────────────────────────────────────────────────
     "xubh-q36u": {
         "name": "Hospital General Information",
         "entity": "hospital",
         "api_type": "provider-data",
-        # Direct CSV download URL (most reliable)
         "csv_url": "https://data.cms.gov/provider-data/sites/default/files/resources/893c372430d9d71a1c52737d01239d47_1770163599/Hospital_General_Information.csv",
-        # Paginated API fallback
         "api_url": "https://data.cms.gov/provider-data/api/1/datastore/query/xubh-q36u/0",
     },
     "geo-var-county": {
         "name": "Medicare Geographic Variation by County",
         "entity": "county",
         "api_type": "data-api",
-        # Direct CSV download URL
         "csv_url": "https://data.cms.gov/sites/default/files/2025-03/a40ac71d-9f80-4d99-92d2-fd149433d7d8/2014-2023%20Medicare%20Fee-for-Service%20Geographic%20Variation%20Public%20Use%20File.csv",
-        # Paginated API fallback (UUID)
         "api_url": "https://data.cms.gov/data-api/v1/dataset/6219697b-8f6c-4164-bed4-cd9317c58ebc/data",
+    },
+    # ── M2 datasets ─────────────────────────────────────────────────
+    "nh-provider-info": {
+        "name": "Nursing Home Provider Info",
+        "entity": "snf",
+        "api_type": "provider-data",
+        "csv_url": "https://data.cms.gov/provider-data/sites/default/files/resources/3059e5643c76d35f1185eb1ee2f38d63_1773439550/NH_ProviderInfo_Mar2026.csv",
+        "api_url": "https://data.cms.gov/provider-data/api/1/datastore/query/4pq5-n9py/0",
+    },
+    "nh-quality-mds": {
+        "name": "SNF Quality Measures (MDS)",
+        "entity": "snf",
+        "api_type": "provider-data",
+        "csv_url": "https://data.cms.gov/provider-data/sites/default/files/resources/7e1ccbe085c113f331361dc24f7c82f7_1773439544/NH_QualityMsr_MDS_Mar2026.csv",
+        "api_url": "https://data.cms.gov/provider-data/api/1/datastore/query/djen-97ju/0",
+    },
+    "mssp-performance": {
+        "name": "MSSP ACO Performance PY2024",
+        "entity": "aco",
+        "api_type": "data-api",
+        "csv_url": "https://data.cms.gov/sites/default/files/2025-09/a355a538-5e08-46bf-a744-549f02782154/PY%202024%20ACO%20Results%20PUF_Rerun_20250925.csv",
+        "api_url": "https://data.cms.gov/data-api/v1/dataset/73b2ce14-351d-40ac-90ba-ec9e1f5ba80c/data",
+    },
+    "hrrp": {
+        "name": "Hospital Readmissions Reduction Program",
+        "entity": "hospital",
+        "api_type": "provider-data",
+        "csv_url": "https://data.cms.gov/provider-data/sites/default/files/resources/a171bc36c488d3e0dc33ec63abb469a6_1770163617/FY_2026_Hospital_Readmissions_Reduction_Program_Hospital.csv",
+        "api_url": "https://data.cms.gov/provider-data/api/1/datastore/query/9n3s-kdb3/0",
+    },
+    "hvbp-tps": {
+        "name": "Hospital Value-Based Purchasing TPS",
+        "entity": "hospital",
+        "api_type": "provider-data",
+        "csv_url": "https://data.cms.gov/provider-data/sites/default/files/resources/5551d4839c1dd75e3f7fe1310a1e2369_1770163628/hvbp_tps.csv",
+        "api_url": "https://data.cms.gov/provider-data/api/1/datastore/query/ypbt-wvdk/0",
+    },
+    "cdc-places": {
+        "name": "CDC PLACES County-Level Data",
+        "entity": "county",
+        "api_type": "soda",
+        "csv_url": None,  # No direct CSV; use SODA API
+        "api_url": "https://data.cdc.gov/resource/swc5-untb.csv",
     },
 }
 
 # Page sizes for paginated API fallbacks
 PROVIDER_DATA_PAGE_SIZE = 5000
 DATA_API_PAGE_SIZE = 5000
+SODA_PAGE_SIZE = 50000
 
 
 def raw_path(dataset_id: str, download_date: date, raw_dir: Path) -> Path:
@@ -138,6 +181,56 @@ def _download_data_api(api_url: str, out_path: Path) -> int:
     return len(all_rows)
 
 
+def _download_soda_api(api_url: str, out_path: Path) -> int:
+    """Download via the Socrata (SODA) API with $limit/$offset pagination.
+
+    The CDC PLACES API returns CSV directly when the URL ends in .csv.
+    Paginates until a page returns fewer rows than the limit.
+    Returns total row count.
+    """
+    print(f"    [soda] {api_url}")
+    total_rows = 0
+    offset = 0
+    first_page = True
+
+    with httpx.Client(timeout=300.0, follow_redirects=True) as client:
+        with open(out_path, "w", encoding="utf-8", newline="") as f:
+            while True:
+                params = {"$limit": SODA_PAGE_SIZE, "$offset": offset}
+                resp = client.get(api_url, params=params)
+                resp.raise_for_status()
+                text = resp.text
+
+                lines = text.splitlines()
+                if not lines:
+                    break
+
+                if first_page:
+                    # Write header + data rows
+                    f.write(text)
+                    if not text.endswith("\n"):
+                        f.write("\n")
+                    # Data rows = total lines minus the header
+                    page_rows = len(lines) - 1
+                    first_page = False
+                else:
+                    # Skip the header row on subsequent pages
+                    data_lines = lines[1:]
+                    if not data_lines:
+                        break
+                    f.write("\n".join(data_lines))
+                    f.write("\n")
+                    page_rows = len(data_lines)
+
+                total_rows += page_rows
+                offset += SODA_PAGE_SIZE
+
+                if page_rows < SODA_PAGE_SIZE:
+                    break
+
+    return total_rows
+
+
 def download_dataset(
     dataset_id: str,
     raw_dir: Path,
@@ -179,8 +272,12 @@ def download_dataset(
         api_type = ds.get("api_type", "provider-data")
         if api_type == "provider-data":
             row_count = _download_provider_data_api(api_url, out_path)
-        else:
+        elif api_type == "soda":
+            row_count = _download_soda_api(api_url, out_path)
+        elif api_type == "data-api":
             row_count = _download_data_api(api_url, out_path)
+        else:
+            raise RuntimeError(f"Unknown api_type '{api_type}' for {dataset_id}")
         print(f"    -> {out_path.name} ({row_count:,} rows)")
         return out_path
 
@@ -188,7 +285,7 @@ def download_dataset(
 
 
 def acquire_all(raw_dir: Path) -> dict[str, Path]:
-    """Download all M1 datasets. Returns {dataset_id: file_path}."""
+    """Download all datasets. Returns {dataset_id: file_path}."""
     results = {}
     for dataset_id in DATASETS:
         results[dataset_id] = download_dataset(dataset_id, raw_dir)

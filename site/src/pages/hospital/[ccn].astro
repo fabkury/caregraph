@@ -38,6 +38,43 @@ const csvDataUri = `data:text/csv;charset=utf-8,${encodeURIComponent(csvContent)
 
 // Provenance info
 const provenance = manifest.provenance?.[0];
+
+// Enrichment data
+const readmissions = manifest.data?.readmissions || null;
+const vbp = manifest.data?.vbp || null;
+const related = manifest.related || [];
+
+// Friendly measure names for HRRP
+const measureLabels: Record<string, string> = {
+  'READM-30-HIP-KNEE-HRRP': 'Hip/Knee Replacement',
+  'READM-30-CABG-HRRP': 'CABG Surgery',
+  'READM-30-AMI-HRRP': 'Acute Myocardial Infarction',
+  'READM-30-COPD-HRRP': 'COPD',
+  'READM-30-PN-HRRP': 'Pneumonia',
+  'READM-30-HF-HRRP': 'Heart Failure',
+};
+
+// VBP domain labels
+const vbpDomains = [
+  { key: 'total_performance_score', label: 'Total Performance Score' },
+  { key: 'clinical_outcomes_score', label: 'Clinical Outcomes' },
+  { key: 'safety_score', label: 'Safety' },
+  { key: 'person_community_score', label: 'Person & Community Engagement' },
+  { key: 'efficiency_score', label: 'Efficiency & Cost Reduction' },
+];
+
+// Entity URL helpers
+function entityUrl(rel: { type: string; id: string }): string {
+  if (rel.type === 'county') return `/county/${rel.id}/`;
+  if (rel.type === 'hospital') return `/hospital/${rel.id}/`;
+  if (rel.type === 'snf') return `/snf/${rel.id}/`;
+  if (rel.type === 'aco') return `/aco/${rel.id}/`;
+  return '#';
+}
+
+function badgeClass(type: string): string {
+  return `badge badge-${type}`;
+}
 ---
 
 <BaseLayout title={name} description={`${name} (CCN: ${ccn}) — Hospital profile on CareGraph`}>
@@ -99,6 +136,75 @@ const provenance = manifest.provenance?.[0];
       </dl>
     </div>
 
+    {readmissions && Object.keys(readmissions).length > 0 && (
+      <div class="card">
+        <h2>Readmissions (HRRP)</h2>
+        <div style="overflow-x: auto;">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Condition</th>
+                <th>Excess Readmission Ratio</th>
+                <th>Predicted Rate</th>
+                <th>Expected Rate</th>
+              </tr>
+            </thead>
+            <tbody>
+              {Object.entries(readmissions).map(([measure, d]: [string, any]) => (
+                <tr>
+                  <td style="font-weight: 500;">{measureLabels[measure] || measure}</td>
+                  <td style={d.excess_readmission_ratio > 1 ? 'color: var(--color-error);' : 'color: var(--color-accent);'}>
+                    {d.excess_readmission_ratio?.toFixed(4) ?? '\u2014'}
+                  </td>
+                  <td>{d.predicted_readmission_rate?.toFixed(2) ?? '\u2014'}%</td>
+                  <td>{d.expected_readmission_rate?.toFixed(2) ?? '\u2014'}%</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <p style="font-size: 0.8rem; color: var(--color-text-muted); margin-top: 0.5rem;">
+          Ratio &gt; 1.0 means higher-than-expected readmissions. Source: Hospital Readmissions Reduction Program.
+        </p>
+      </div>
+    )}
+
+    {vbp && (
+      <div class="card">
+        <h2>Value-Based Purchasing</h2>
+        <div class="metric-grid">
+          {vbpDomains.map(({ key, label }) => {
+            const val = vbp[key];
+            if (val === null || val === undefined) return null;
+            return (
+              <div class="metric-card">
+                <div class="label">{label}</div>
+                <div class="value">{typeof val === 'number' ? val.toFixed(1) : val}</div>
+              </div>
+            );
+          })}
+        </div>
+        <p style="font-size: 0.8rem; color: var(--color-text-muted); margin-top: 0.5rem;">
+          Source: Hospital Value-Based Purchasing Total Performance Score.
+        </p>
+      </div>
+    )}
+
+    {related.length > 0 && (
+      <div class="card">
+        <h2>Related Entities</h2>
+        <ul class="related-list">
+          {related.map((rel: any) => (
+            <li>
+              <span class={badgeClass(rel.type)}>{rel.type}</span>
+              <a href={entityUrl(rel)}>{rel.name}</a>
+              {rel.context && <span class="related-context">{rel.context}</span>}
+            </li>
+          ))}
+        </ul>
+      </div>
+    )}
+
     <div class="methodology-stub">
       <strong>Methodology</strong>
       <p>
@@ -108,6 +214,14 @@ const provenance = manifest.provenance?.[0];
         Downloaded: {provenance?.download_date}.
         Rows in source: {provenance?.row_count?.toLocaleString()}.
       </p>
+      {manifest.provenance?.length > 1 && (
+        <p>
+          Additional data sources:
+          {manifest.provenance.slice(1).map((p: any) => (
+            <span> <strong>{p.dataset_name}</strong> ({p.vintage})</span>
+          ))}
+        </p>
+      )}
       <p>
         <a href="#">Full methodology &rarr;</a>
       </p>

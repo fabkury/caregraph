@@ -30,12 +30,29 @@ const { title, description = 'CareGraph — the public Medicare data you already
         <a href="#">Workspace</a>
         <a href="#">About</a>
       </div>
+      <div class="nav-search">
+        <input type="text" id="nav-search-input" placeholder="Search..." />
+      </div>
     </div>
   </nav>
 
   <main class="main">
     <slot />
   </main>
+
+  <script>
+    const navSearchInput = document.getElementById('nav-search-input') as HTMLInputElement | null;
+    if (navSearchInput) {
+      navSearchInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          const q = navSearchInput.value.trim();
+          if (q) {
+            window.location.href = `/search?q=${encodeURIComponent(q)}`;
+          }
+        }
+      });
+    }
+  </script>
 
   <footer class="footer">
     <div class="footer-inner">
