@@ -1,0 +1,204 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import fs from 'node:fs';
+import path from 'node:path';
+
+export function getStaticPaths() {
+  const siteDataDir = path.resolve(process.cwd(), '..', 'site_data', 'county');
+  const paths: Array<{ params: { fips: string }; props: { manifest: any } }> = [];
+
+  if (!fs.existsSync(siteDataDir)) return paths;
+
+  const files = fs.readdirSync(siteDataDir).filter((f: string) => f.endsWith('.json'));
+  for (const file of files) {
+    const manifest = JSON.parse(fs.readFileSync(path.join(siteDataDir, file), 'utf-8'));
+    paths.push({
+      params: { fips: manifest.fips },
+      props: { manifest },
+    });
+  }
+
+  return paths;
+}
+
+const { manifest } = Astro.props;
+const { fips } = Astro.params;
+
+const name = manifest.county_name;
+const state = manifest.state;
+const geoVar = manifest.data?.geographic_variation || {};
+const metrics = geoVar.metrics || {};
+const rawData = geoVar.raw || {};
+
+// Key metrics to highlight in Explore mode
+const highlightMetrics = [
+  { key: 'tot_mdcr_stdzd_pymt_pc', format: 'dollar' },
+  { key: 'tot_mdcr_pymt_pc', format: 'dollar' },
+  { key: 'bene_avg_risk_scre', format: 'decimal' },
+  { key: 'bene_avg_age', format: 'decimal' },
+  { key: 'acute_hosp_readmsn_pct', format: 'percent' },
+  { key: 'er_visits_per_1000_benes', format: 'decimal' },
+  { key: 'bene_dual_pct', format: 'percent' },
+  { key: 'ma_prtcptn_rate', format: 'percent' },
+  { key: 'ip_mdcr_stdzd_pymt_pc', format: 'dollar' },
+  { key: 'snf_mdcr_stdzd_pymt_pc', format: 'dollar' },
+  { key: 'hh_mdcr_stdzd_pymt_pc', format: 'dollar' },
+  { key: 'physcn_mdcr_stdzd_pymt_pc', format: 'dollar' },
+];
+
+function formatValue(val: number, format: string): string {
+  if (format === 'dollar') return '$' + val.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+  if (format === 'percent') return val.toFixed(1) + '%';
+  return val.toFixed(2);
+}
+
+// Build CSV for download
+const csvHeaders = Object.keys(rawData);
+const csvRow = csvHeaders.map((h: string) => `"${(rawData[h] || '').replace(/"/g, '""')}"`);
+const csvContent = csvHeaders.join(',') + '\n' + csvRow.join(',');
+const csvDataUri = `data:text/csv;charset=utf-8,${encodeURIComponent(csvContent)}`;
+
+const provenance = manifest.provenance?.[0];
+---
+
+<BaseLayout title={`${name}, ${state}`} description={`${name}, ${state} (FIPS: ${fips}) — County profile on CareGraph`}>
+  <div class="page-header">
+    <div style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
+      <span class="badge badge-county">County</span>
+      <h1 style="margin: 0;">{name}, {state}</h1>
+    </div>
+    <p class="subtitle">
+      FIPS: <code>{fips}</code>
+    </p>
+  </div>
+
+  <div class="actions-bar">
+    <div class="mode-toggle" id="mode-toggle">
+      <button class="active" data-mode="explore">Explore</button>
+      <button data-mode="table">Table</button>
+    </div>
+    <a href={csvDataUri} download={`county_${fips}_geographic_variation.csv`} class="btn">
+      Download CSV
+    </a>
+  </div>
+
+  <!-- Explore mode -->
+  <div id="explore-view">
+    <div class="card">
+      <h2>Geographic Variation — Key Metrics</h2>
+      <div class="metric-grid">
+        {highlightMetrics.map(({ key, format }) => {
+          const m = metrics[key];
+          if (!m) return null;
+          return (
+            <div class="metric-card">
+              <div class="label">{m.label}</div>
+              <div class="value">{formatValue(m.value, format)}</div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+
+    {Object.keys(metrics).length === 0 && (
+      <div class="card">
+        <p style="color: var(--color-text-muted);">
+          No Geographic Variation metrics available for this county.
+        </p>
+      </div>
+    )}
+
+    <div class="methodology-stub">
+      <strong>Methodology</strong>
+      <p>
+        Data source: <strong>{provenance?.dataset_name}</strong>
+        (dataset ID: <code>{provenance?.dataset_id}</code>).
+        Vintage: {provenance?.vintage}.
+        Downloaded: {provenance?.download_date}.
+        Rows in source: {provenance?.row_count?.toLocaleString()}.
+      </p>
+      <p>
+        <em>Medicare Geographic Variation</em> shows standardized per capita spending,
+        utilization, and demographic characteristics for Medicare fee-for-service beneficiaries
+        at the county level. Standardized payments remove geographic payment adjustments to
+        enable fair comparison across regions.
+      </p>
+      <p>
+        <a href="#">Full methodology &rarr;</a>
+      </p>
+    </div>
+  </div>
+
+  <!-- Table mode -->
+  <div id="table-view" style="display: none;">
+    <div class="card">
+      <h2>All Geographic Variation Fields</h2>
+      <div style="overflow-x: auto;">
+        <table class="data-table" id="data-table">
+          <thead>
+            <tr>
+              <th>Field</th>
+              <th>Value</th>
+            </tr>
+          </thead>
+          <tbody>
+            {Object.entries(rawData).map(([key, value]) => (
+              <tr>
+                <td style="font-weight: 500;">{key}</td>
+                <td>{value as string || '\u2014'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Mode toggle
+    const toggle = document.getElementById('mode-toggle');
+    const exploreView = document.getElementById('explore-view');
+    const tableView = document.getElementById('table-view');
+
+    if (toggle && exploreView && tableView) {
+      const buttons = toggle.querySelectorAll('button');
+      const savedMode = localStorage.getItem('caregraph-mode') || 'explore';
+      setMode(savedMode);
+
+      buttons.forEach(btn => {
+        btn.addEventListener('click', () => {
+          const mode = btn.getAttribute('data-mode') || 'explore';
+          setMode(mode);
+          localStorage.setItem('caregraph-mode', mode);
+        });
+      });
+
+      function setMode(mode: string) {
+        buttons.forEach(b => b.classList.toggle('active', b.getAttribute('data-mode') === mode));
+        exploreView!.style.display = mode === 'explore' ? '' : 'none';
+        tableView!.style.display = mode === 'table' ? '' : 'none';
+      }
+    }
+
+    // Simple table sorting
+    const table = document.getElementById('data-table') as HTMLTableElement | null;
+    if (table) {
+      const headers = table.querySelectorAll('th');
+      headers.forEach((header, index) => {
+        header.addEventListener('click', () => {
+          const tbody = table.querySelector('tbody');
+          if (!tbody) return;
+          const rows = Array.from(tbody.querySelectorAll('tr'));
+          const ascending = header.getAttribute('data-sort') !== 'asc';
+          header.setAttribute('data-sort', ascending ? 'asc' : 'desc');
+          rows.sort((a, b) => {
+            const aVal = a.cells[index]?.textContent || '';
+            const bVal = b.cells[index]?.textContent || '';
+            return ascending ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+          });
+          rows.forEach(row => tbody.appendChild(row));
+        });
+      });
+    }
+  </script>
+</BaseLayout>

@@ -1,0 +1,57 @@
+# CareGraph
+
+[![Status: Pre-Alpha](https://img.shields.io/badge/status-pre--alpha-orange)]()
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+
+**The public Medicare data you already paid for, finally connected.**
+
+CareGraph is a free, open-source, ad-free website that unifies 100+ publicly available CMS datasets into a single richly interlinked exploration tool. It serves value-based care leaders, researchers, journalists, and clinicians who need scorecards, benchmarks, filterable tables, full methodology, and downloadable data -- all cross-linked through the identifiers (CCN, NPI, TIN, FIPS) that tie Medicare's data ecosystem together.
+
+## How it works
+
+All heavy lifting runs offline via a manual ETL on the maintainer's workstation. The VPS serves only static files. The browser renders precomputed JSON manifests through a lightweight data grid.
+
+```
+ETL (Python + DuckDB)  -->  site_data/ (JSON manifests)
+                               |
+                         Astro build  -->  site/dist/ (static HTML)
+                               |
+                         rsync + atomic swap  -->  caregraph.org
+```
+
+## Current scope (v1 starting subset)
+
+- **Hospitals** -- Hospital General Information, HVBP, HRRP, HAC, HCAHPS, MSPB, Cost Reports
+- **SNFs / Nursing Homes** -- SNF VBP, MDS, PBJ, Penalties, Cost Reports
+- **Counties** -- Geographic Variation, Chronic Conditions, SDOH overlays
+- **ACOs** -- MSSP, REACH, Participants, Beneficiary by County
+
+## Quick start
+
+```bash
+# 1. Install Python dependencies
+pip install -e .
+
+# 2. Run ETL (downloads data, builds manifests)
+python etl/run.py
+
+# 3. Build the static site
+cd site && npm install && npm run build
+
+# 4. Deploy (requires .env.deploy config)
+bash deploy/deploy.sh
+```
+
+## Full specification
+
+See [cms-unified-vbc-tool-spec.md](cms-unified-vbc-tool-spec.md) for the complete product specification.
+
+## How to cite
+
+> CareGraph. (2026). *CareGraph: Unified CMS data exploration tool.* https://caregraph.org. Source code: https://github.com/caregraph/caregraph.
+
+## License
+
+MIT. See [LICENSE](LICENSE).
+
+Data content is sourced from publicly available CMS, CDC, AHRQ, HRSA, Census, and USDA datasets. Per-source licenses are documented in the Methodology Hub.

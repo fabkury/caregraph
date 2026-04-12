@@ -1,0 +1,53 @@
+---
+import '../styles/global.css';
+
+interface Props {
+  title: string;
+  description?: string;
+}
+
+const { title, description = 'CareGraph — the public Medicare data you already paid for, finally connected.' } = Astro.props;
+---
+
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description" content={description} />
+  <title>{title} | CareGraph</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+</head>
+<body>
+  <nav class="nav">
+    <div class="nav-inner">
+      <a href="/" class="nav-logo">CareGraph</a>
+      <div class="nav-links">
+        <a href="/">Home</a>
+        <a href="#">Explore</a>
+        <a href="#">Maps</a>
+        <a href="#">Methodology</a>
+        <a href="#">Workspace</a>
+        <a href="#">About</a>
+      </div>
+    </div>
+  </nav>
+
+  <main class="main">
+    <slot />
+  </main>
+
+  <footer class="footer">
+    <div class="footer-inner">
+      <div>
+        MIT License. Free. No ads. No login.
+      </div>
+      <div>
+        <a href="https://github.com/caregraph/caregraph" target="_blank" rel="noopener">GitHub</a>
+        &middot;
+        <a href="https://github.com/caregraph/caregraph/issues/new?template=error_report.md" target="_blank" rel="noopener">Report an error</a>
+      </div>
+    </div>
+  </footer>
+</body>
+</html>

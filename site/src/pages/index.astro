@@ -1,0 +1,119 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import fs from 'node:fs';
+import path from 'node:path';
+
+// Read the manifest index to find sample entities
+const siteDataDir = path.resolve(process.cwd(), '..', 'site_data');
+let sampleHospital: any = null;
+let sampleCounty: any = null;
+let hospitalCount = 0;
+let countyCount = 0;
+
+try {
+  const indexPath = path.join(siteDataDir, 'index.json');
+  if (fs.existsSync(indexPath)) {
+    const index = JSON.parse(fs.readFileSync(indexPath, 'utf-8'));
+    hospitalCount = index.entities?.hospital?.count ?? 0;
+    countyCount = index.entities?.county?.count ?? 0;
+  }
+
+  // Pick a sample hospital (first one alphabetically)
+  const hospitalDir = path.join(siteDataDir, 'hospital');
+  if (fs.existsSync(hospitalDir)) {
+    const files = fs.readdirSync(hospitalDir).filter((f: string) => f.endsWith('.json')).sort();
+    if (files.length > 0) {
+      sampleHospital = JSON.parse(fs.readFileSync(path.join(hospitalDir, files[0]), 'utf-8'));
+    }
+  }
+
+  // Pick a sample county
+  const countyDir = path.join(siteDataDir, 'county');
+  if (fs.existsSync(countyDir)) {
+    const files = fs.readdirSync(countyDir).filter((f: string) => f.endsWith('.json')).sort();
+    if (files.length > 0) {
+      sampleCounty = JSON.parse(fs.readFileSync(path.join(countyDir, files[0]), 'utf-8'));
+    }
+  }
+} catch (e) {
+  // site_data may not exist yet during initial dev
+}
+---
+
+<BaseLayout title="Home">
+  <section class="hero">
+    <h1>CareGraph</h1>
+    <p class="tagline">The public Medicare data you already paid for, finally connected.</p>
+    <p style="max-width: 700px; margin: 0 auto 2rem; color: var(--color-text-muted); font-size: 0.95rem;">
+      CareGraph stitches together 100+ public CMS datasets so you can look up a hospital,
+      see its readmission performance <strong>and</strong> its downstream SNF quality
+      <strong>and</strong> its affiliated ACOs <strong>and</strong> its county's social determinants —
+      all in one place, all cross-linked, all exportable. Free. No ads. No login.
+    </p>
+  </section>
+
+  <div class="search-box">
+    <input
+      type="text"
+      class="search-input"
+      placeholder="Search hospitals, counties, clinicians, ACOs, drugs, conditions..."
+      disabled
+      title="Search is not yet functional — coming in M2"
+    />
+    <p style="text-align: center; font-size: 0.8rem; color: var(--color-text-muted); margin-top: 0.5rem;">
+      Search coming soon. Use the links below to explore.
+    </p>
+  </div>
+
+  <h2 style="text-align: center; margin-bottom: 1rem;">Explore by entity</h2>
+  <div class="entity-tiles">
+    <a class="entity-tile" href="#">Hospitals</a>
+    <a class="entity-tile" href="#">SNFs</a>
+    <a class="entity-tile" href="#">Counties</a>
+    <a class="entity-tile" href="#">ACOs</a>
+    <a class="entity-tile" href="#">Clinicians</a>
+    <a class="entity-tile" href="#">Drugs</a>
+    <a class="entity-tile" href="#">Conditions</a>
+    <a class="entity-tile" href="#">DRGs</a>
+  </div>
+
+  {(sampleHospital || sampleCounty) && (
+    <div class="card" style="margin-top: 2rem;">
+      <h2>Sample pages</h2>
+      <p style="color: var(--color-text-muted); font-size: 0.9rem; margin-bottom: 1rem;">
+        M1 skeleton — {hospitalCount.toLocaleString()} hospitals and {countyCount.toLocaleString()} counties loaded.
+      </p>
+      <ul style="list-style: none; padding: 0; display: flex; flex-wrap: wrap; gap: 0.75rem;">
+        {sampleHospital && (
+          <li>
+            <a href={`/hospital/${sampleHospital.ccn}/`} class="btn btn-primary">
+              {sampleHospital.facility_name} ({sampleHospital.ccn})
+            </a>
+          </li>
+        )}
+        {sampleCounty && (
+          <li>
+            <a href={`/county/${sampleCounty.fips}/`} class="btn btn-primary">
+              {sampleCounty.county_name}, {sampleCounty.state} ({sampleCounty.fips})
+            </a>
+          </li>
+        )}
+      </ul>
+    </div>
+  )}
+
+  <div class="card" style="margin-top: 1rem;">
+    <h2>Data freshness</h2>
+    <p style="font-size: 0.9rem; color: var(--color-text-muted);">
+      Current data sources: Hospital General Information, Medicare Geographic Variation by County.
+      Last ETL run: {new Date().toISOString().slice(0, 10)}.
+      <a href="#">Full vintage table (Methodology Hub) &rarr;</a>
+    </p>
+  </div>
+
+  <p style="text-align: center; margin-top: 2rem; font-size: 0.85rem; color: var(--color-text-muted);">
+    Source code:
+    <a href="https://github.com/caregraph/caregraph" target="_blank" rel="noopener">github.com/caregraph/caregraph</a>
+    &middot; MIT License
+  </p>
+</BaseLayout>

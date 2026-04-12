@@ -1,0 +1,190 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import fs from 'node:fs';
+import path from 'node:path';
+
+export function getStaticPaths() {
+  const siteDataDir = path.resolve(process.cwd(), '..', 'site_data', 'hospital');
+  const paths: Array<{ params: { ccn: string }; props: { manifest: any } }> = [];
+
+  if (!fs.existsSync(siteDataDir)) return paths;
+
+  const files = fs.readdirSync(siteDataDir).filter((f: string) => f.endsWith('.json'));
+  for (const file of files) {
+    const manifest = JSON.parse(fs.readFileSync(path.join(siteDataDir, file), 'utf-8'));
+    paths.push({
+      params: { ccn: manifest.ccn },
+      props: { manifest },
+    });
+  }
+
+  return paths;
+}
+
+const { manifest } = Astro.props;
+const { ccn } = Astro.params;
+
+// Extract useful fields
+const name = manifest.facility_name;
+const rating = manifest.hospital_overall_rating;
+const ratingNum = rating && rating !== 'Not Available' ? parseInt(rating) : null;
+
+// Build the CSV data for download
+const generalInfo = manifest.data?.general_info || {};
+const csvHeaders = Object.keys(generalInfo);
+const csvRow = csvHeaders.map((h: string) => `"${(generalInfo[h] || '').replace(/"/g, '""')}"`);
+const csvContent = csvHeaders.join(',') + '\n' + csvRow.join(',');
+const csvDataUri = `data:text/csv;charset=utf-8,${encodeURIComponent(csvContent)}`;
+
+// Provenance info
+const provenance = manifest.provenance?.[0];
+---
+
+<BaseLayout title={name} description={`${name} (CCN: ${ccn}) — Hospital profile on CareGraph`}>
+  <div class="page-header">
+    <div style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
+      <span class="badge badge-hospital">Hospital</span>
+      <h1 style="margin: 0;">{name}</h1>
+    </div>
+    <p class="subtitle">
+      CCN: <code>{ccn}</code> &middot; {manifest.city}, {manifest.state} {manifest.zip_code}
+      {manifest.county_name && <span>&middot; {manifest.county_name} County</span>}
+    </p>
+  </div>
+
+  <div class="actions-bar">
+    <div class="mode-toggle" id="mode-toggle">
+      <button class="active" data-mode="explore">Explore</button>
+      <button data-mode="table">Table</button>
+    </div>
+    <a href={csvDataUri} download={`hospital_${ccn}_general_info.csv`} class="btn">
+      Download CSV
+    </a>
+  </div>
+
+  <!-- Explore mode -->
+  <div id="explore-view">
+    <div class="card">
+      <h2>Overview</h2>
+      <dl class="kv-grid">
+        <dt>Address</dt>
+        <dd>{manifest.address}, {manifest.city}, {manifest.state} {manifest.zip_code}</dd>
+        <dt>Phone</dt>
+        <dd>{manifest.phone_number}</dd>
+        <dt>Hospital type</dt>
+        <dd>{manifest.hospital_type}</dd>
+        <dt>Ownership</dt>
+        <dd>{manifest.hospital_ownership}</dd>
+        <dt>Emergency services</dt>
+        <dd>{manifest.emergency_services}</dd>
+        {ratingNum !== null && (
+          <>
+            <dt>Overall star rating</dt>
+            <dd>
+              <span class="star-rating">
+                {[1,2,3,4,5].map(i => (
+                  <span class={i <= ratingNum ? 'star-filled' : 'star-empty'}>&#9733;</span>
+                ))}
+              </span>
+              ({ratingNum}/5)
+            </dd>
+          </>
+        )}
+        {ratingNum === null && rating && (
+          <>
+            <dt>Overall star rating</dt>
+            <dd style="color: var(--color-text-muted);">&mdash; {rating}</dd>
+          </>
+        )}
+      </dl>
+    </div>
+
+    <div class="methodology-stub">
+      <strong>Methodology</strong>
+      <p>
+        Data source: <strong>{provenance?.dataset_name}</strong>
+        (dataset ID: <code>{provenance?.dataset_id}</code>).
+        Vintage: {provenance?.vintage}.
+        Downloaded: {provenance?.download_date}.
+        Rows in source: {provenance?.row_count?.toLocaleString()}.
+      </p>
+      <p>
+        <a href="#">Full methodology &rarr;</a>
+      </p>
+    </div>
+  </div>
+
+  <!-- Table mode -->
+  <div id="table-view" style="display: none;">
+    <div class="card">
+      <h2>Hospital General Information</h2>
+      <div style="overflow-x: auto;">
+        <table class="data-table" id="data-table">
+          <thead>
+            <tr>
+              <th>Field</th>
+              <th>Value</th>
+            </tr>
+          </thead>
+          <tbody>
+            {Object.entries(generalInfo).map(([key, value]) => (
+              <tr>
+                <td style="font-weight: 500;">{key}</td>
+                <td>{value as string || '\u2014'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Mode toggle
+    const toggle = document.getElementById('mode-toggle');
+    const exploreView = document.getElementById('explore-view');
+    const tableView = document.getElementById('table-view');
+
+    if (toggle && exploreView && tableView) {
+      const buttons = toggle.querySelectorAll('button');
+      // Restore from localStorage
+      const savedMode = localStorage.getItem('caregraph-mode') || 'explore';
+      setMode(savedMode);
+
+      buttons.forEach(btn => {
+        btn.addEventListener('click', () => {
+          const mode = btn.getAttribute('data-mode') || 'explore';
+          setMode(mode);
+          localStorage.setItem('caregraph-mode', mode);
+        });
+      });
+
+      function setMode(mode: string) {
+        buttons.forEach(b => b.classList.toggle('active', b.getAttribute('data-mode') === mode));
+        exploreView!.style.display = mode === 'explore' ? '' : 'none';
+        tableView!.style.display = mode === 'table' ? '' : 'none';
+      }
+    }
+
+    // Simple table sorting
+    const table = document.getElementById('data-table') as HTMLTableElement | null;
+    if (table) {
+      const headers = table.querySelectorAll('th');
+      headers.forEach((header, index) => {
+        header.addEventListener('click', () => {
+          const tbody = table.querySelector('tbody');
+          if (!tbody) return;
+          const rows = Array.from(tbody.querySelectorAll('tr'));
+          const ascending = header.getAttribute('data-sort') !== 'asc';
+          header.setAttribute('data-sort', ascending ? 'asc' : 'desc');
+          rows.sort((a, b) => {
+            const aVal = a.cells[index]?.textContent || '';
+            const bVal = b.cells[index]?.textContent || '';
+            return ascending ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+          });
+          rows.forEach(row => tbody.appendChild(row));
+        });
+      });
+    }
+  </script>
+</BaseLayout>
