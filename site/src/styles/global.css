@@ -492,3 +492,53 @@ h1, h2, h3, h4, h5, h6 {
 
 /* Collapsible sections */
 .show-more-btn { color: var(--color-primary); cursor: pointer; font-size: 0.85rem; padding: 0.25rem 0; border: none; background: none; }
+
+/* Skip to main content link (accessibility) */
+.skip-link {
+  position: absolute;
+  top: -100%;
+  left: 1rem;
+  z-index: 1000;
+  padding: 0.75rem 1.25rem;
+  background: var(--color-primary);
+  color: #fff;
+  border-radius: 0 0 6px 6px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  text-decoration: none;
+  transition: top 0.15s;
+}
+
+.skip-link:focus {
+  top: 0;
+  outline: none;
+}
+
+/* Focus-visible outlines for interactive elements (accessibility) */
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--color-primary-light);
+  outline-offset: 2px;
+}
+
+.mode-toggle button:focus-visible {
+  outline: 2px solid var(--color-primary-light);
+  outline-offset: -2px;
+  z-index: 1;
+  position: relative;
+}
+
+.btn:focus-visible {
+  outline: 2px solid var(--color-primary-light);
+  outline-offset: 2px;
+}
+
+.nav-links a:focus-visible {
+  outline: 2px solid var(--color-primary-light);
+  outline-offset: 2px;
+  border-radius: 3px;
+}

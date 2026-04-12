@@ -441,3 +441,151 @@ test.describe('Search', () => {
     await expect(page).toHaveURL(/\/search\?q=Los%20Angeles/);
   });
 });
+
+// ---------------------------------------------------------------------------
+// M3: Methodology Hub
+// ---------------------------------------------------------------------------
+
+test.describe('Methodology hub', () => {
+  test('methodology hub page loads', async ({ page }) => {
+    await page.goto('/methodology/');
+    await expect(page.locator('h1')).toContainText('Methodology');
+    await expect(page).toHaveTitle(/Methodology/);
+  });
+
+  test('per-dataset methodology page loads (HRRP)', async ({ page }) => {
+    await page.goto('/methodology/dataset/hrrp/');
+    await expect(page.locator('h1')).toBeVisible();
+    // Should have some content about the dataset
+    await expect(page.locator('body')).toContainText('HRRP');
+  });
+
+  test('methodology page has required sections', async ({ page }) => {
+    await page.goto('/methodology/');
+    // Should list datasets or have navigable content
+    const links = page.locator('a[href*="/methodology/dataset/"]');
+    expect(await links.count()).toBeGreaterThan(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// M4: Map, Compare, and Workspace pages
+// ---------------------------------------------------------------------------
+
+test.describe('Map page', () => {
+  test('map page loads with map container', async ({ page }) => {
+    await page.goto('/map/');
+    await expect(page).toHaveTitle(/Map Explorer/);
+    // Map container should be present
+    await expect(page.locator('#map')).toBeVisible();
+  });
+});
+
+test.describe('Compare page', () => {
+  test('compare page loads', async ({ page }) => {
+    await page.goto('/compare/');
+    await expect(page.locator('h1')).toContainText('Compare');
+    await expect(page).toHaveTitle(/Compare/);
+  });
+});
+
+test.describe('Workspace page', () => {
+  test('workspace page loads', async ({ page }) => {
+    await page.goto('/workspace/');
+    await expect(page.locator('h1')).toContainText('Workspace');
+  });
+
+  test('workspace shows empty state message', async ({ page }) => {
+    // Clear any existing workspace data
+    await page.goto('/workspace/');
+    await page.evaluate(() => localStorage.removeItem('caregraph-workspace'));
+    await page.reload();
+    // Should show an empty state indicator
+    await expect(page.locator('body')).toContainText(/empty|no items|nothing|get started|saved|pinned/i);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// M5: About page
+// ---------------------------------------------------------------------------
+
+test.describe('About page', () => {
+  test('about page loads with pitch text', async ({ page }) => {
+    await page.goto('/about/');
+    await expect(page.locator('h1')).toContainText('About');
+    await expect(page.locator('body')).toContainText('the public Medicare data you already paid for');
+  });
+
+  test('about page has citation section', async ({ page }) => {
+    await page.goto('/about/');
+    await expect(page.locator('#cite')).toBeVisible();
+    await expect(page.locator('body')).toContainText('How to Cite');
+    await expect(page.locator('body')).toContainText('BibTeX');
+  });
+
+  test('about page has license info', async ({ page }) => {
+    await page.goto('/about/');
+    await expect(page.locator('body')).toContainText('MIT License');
+    await expect(page.locator('body')).toContainText('CMS');
+    // Should have the license table
+    await expect(page.locator('.data-table')).toBeVisible();
+  });
+
+  test('about page has GitHub link', async ({ page }) => {
+    await page.goto('/about/');
+    const ghLink = page.locator('a[href*="github.com/fabkury/caregraph"]').first();
+    await expect(ghLink).toBeVisible();
+  });
+
+  test('about page has error reporting link', async ({ page }) => {
+    await page.goto('/about/');
+    const issuesLink = page.locator('a[href*="github.com/fabkury/caregraph/issues"]');
+    await expect(issuesLink).toBeVisible();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// M5: Accessibility
+// ---------------------------------------------------------------------------
+
+test.describe('Accessibility', () => {
+  test('skip-to-content link exists', async ({ page }) => {
+    await page.goto('/');
+    const skipLink = page.locator('a.skip-link');
+    await expect(skipLink).toHaveAttribute('href', '#main-content');
+    // Should be visually hidden but exist in DOM
+    await expect(skipLink).toBeAttached();
+  });
+
+  test('main content has id for skip link target', async ({ page }) => {
+    await page.goto('/');
+    await expect(page.locator('main#main-content')).toBeVisible();
+  });
+
+  test('nav has proper ARIA attributes', async ({ page }) => {
+    await page.goto('/');
+    const nav = page.locator('nav.nav');
+    await expect(nav).toHaveAttribute('role', 'navigation');
+    await expect(nav).toHaveAttribute('aria-label', 'Main navigation');
+  });
+
+  test('search has proper ARIA attributes', async ({ page }) => {
+    await page.goto('/');
+    const search = page.locator('.nav-search');
+    await expect(search).toHaveAttribute('role', 'search');
+    await expect(search).toHaveAttribute('aria-label', 'Search');
+  });
+
+  test('all nav links point to real pages (not #)', async ({ page }) => {
+    await page.goto('/');
+    const links = page.locator('.nav-links a');
+    const count = await links.count();
+    for (let i = 0; i < count; i++) {
+      const href = await links.nth(i).getAttribute('href');
+      const text = await links.nth(i).textContent();
+      // Allow # only for "Explore" which is a placeholder for the browse pages
+      if (text?.trim() === 'Explore') continue;
+      expect(href, `Nav link "${text}" should not point to #`).not.toBe('#');
+    }
+  });
+});

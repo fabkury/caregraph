@@ -1,0 +1,190 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+---
+
+<BaseLayout title="About">
+  <div class="page-header">
+    <h1>About CareGraph</h1>
+    <p class="subtitle">Free, open-source Medicare data exploration</p>
+  </div>
+
+  <!-- Public Pitch -->
+  <section class="card about-section">
+    <h2>What is CareGraph?</h2>
+    <blockquote class="pitch-quote">
+      <p><strong>CareGraph — the public Medicare data you already paid for, finally connected.</strong></p>
+      <p>
+        The federal government publishes hundreds of high-value datasets about how Medicare works:
+        which hospitals readmit patients, which nursing homes are understaffed, which counties spend
+        the most per beneficiary, which clinicians prescribe outside the norm. Using these datasets
+        <em>together</em> is hard. Join keys differ. File formats differ. Methodology notes live in
+        PDFs. Most people give up.
+      </p>
+      <p>
+        CareGraph stitches them together. Look up a hospital, see its readmission performance
+        <strong>and</strong> its downstream SNF quality <strong>and</strong> its affiliated ACOs
+        <strong>and</strong> its county's SDOH context — all in one place, all cross-linked, all
+        exportable as CSV. Click any number to see exactly where it came from, how stale it is,
+        how many patients are behind it, and what it does not tell you.
+      </p>
+      <p>
+        Free. No ads. No login. Source code MIT-licensed on GitHub. Built and maintained by a small
+        group of contributors who believe public data should be genuinely usable, not just technically
+        available.
+      </p>
+    </blockquote>
+  </section>
+
+  <!-- License -->
+  <section class="card about-section">
+    <h2>License</h2>
+    <p>
+      CareGraph source code is released under the
+      <a href="https://opensource.org/licenses/MIT" target="_blank" rel="noopener">MIT License</a>.
+      Data content is sourced from federal agencies and is subject to each source's own license terms.
+    </p>
+    <table class="data-table about-license-table">
+      <thead>
+        <tr>
+          <th>Data Source</th>
+          <th>Agency</th>
+          <th>License / Terms</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Hospital General Information</td>
+          <td>CMS</td>
+          <td>Public domain (U.S. government work)</td>
+        </tr>
+        <tr>
+          <td>Hospital Readmissions Reduction Program (HRRP)</td>
+          <td>CMS</td>
+          <td>Public domain (U.S. government work)</td>
+        </tr>
+        <tr>
+          <td>Hospital Value-Based Purchasing (HVBP)</td>
+          <td>CMS</td>
+          <td>Public domain (U.S. government work)</td>
+        </tr>
+        <tr>
+          <td>Medicare Geographic Variation</td>
+          <td>CMS</td>
+          <td>Public domain (U.S. government work)</td>
+        </tr>
+        <tr>
+          <td>Skilled Nursing Facility Quality Reporting</td>
+          <td>CMS</td>
+          <td>Public domain (U.S. government work)</td>
+        </tr>
+        <tr>
+          <td>ACO Performance (Shared Savings Program)</td>
+          <td>CMS</td>
+          <td>Public domain (U.S. government work)</td>
+        </tr>
+        <tr>
+          <td>CDC PLACES</td>
+          <td>CDC</td>
+          <td>Public domain (U.S. government work)</td>
+        </tr>
+        <tr>
+          <td>County FIPS codes</td>
+          <td>U.S. Census Bureau</td>
+          <td>Public domain (U.S. government work)</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- How to Cite -->
+  <section class="card about-section" id="cite">
+    <h2>How to Cite</h2>
+    <p>If you use CareGraph in your work, please cite it as:</p>
+    <pre class="cite-block"><code>CareGraph. (2026). CareGraph: Unified CMS data exploration tool. https://caregraph.org. Source code: https://github.com/fabkury/caregraph.</code></pre>
+
+    <p>BibTeX:</p>
+    <pre class="cite-block"><code>@misc&#123;caregraph2026,
+  title  = &#123;CareGraph: Unified CMS Data Exploration Tool&#125;,
+  year   = &#123;2026&#125;,
+  url    = &#123;https://caregraph.org&#125;,
+  note   = &#123;Source code: https://github.com/fabkury/caregraph&#125;
+&#125;</code></pre>
+  </section>
+
+  <!-- GitHub & Contributing -->
+  <section class="card about-section">
+    <h2>Source Code</h2>
+    <p>
+      CareGraph is open source. The full source code — ETL pipeline, Astro frontend, and
+      deployment scripts — is available on GitHub:
+    </p>
+    <p>
+      <a href="https://github.com/fabkury/caregraph" target="_blank" rel="noopener" class="btn btn-primary">
+        View on GitHub
+      </a>
+    </p>
+  </section>
+
+  <!-- Error Reporting -->
+  <section class="card about-section">
+    <h2>Report an Error</h2>
+    <p>
+      Found incorrect data, a broken link, or a bug? Please open an issue on GitHub so we can
+      investigate and fix it:
+    </p>
+    <p>
+      <a href="https://github.com/fabkury/caregraph/issues" target="_blank" rel="noopener" class="btn">
+        Open an Issue
+      </a>
+    </p>
+    <p class="about-note">
+      When reporting data errors, please include the entity page URL and the specific metric
+      that appears incorrect. This helps us trace the issue back to the source dataset.
+    </p>
+  </section>
+</BaseLayout>
+
+<style>
+  .pitch-quote {
+    margin: 1rem 0;
+    padding: 1.25rem 1.5rem;
+    border-left: 4px solid var(--color-primary);
+    background: var(--color-border-light);
+    border-radius: 0 8px 8px 0;
+  }
+
+  .pitch-quote p {
+    margin: 0 0 0.75rem;
+  }
+
+  .pitch-quote p:last-child {
+    margin-bottom: 0;
+  }
+
+  .cite-block {
+    background: var(--color-border-light);
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    padding: 1rem;
+    overflow-x: auto;
+    font-size: 0.85rem;
+    font-family: var(--font-mono);
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  .about-license-table {
+    margin-top: 1rem;
+  }
+
+  .about-note {
+    font-size: 0.85rem;
+    color: var(--color-text-muted);
+    margin-top: 0.5rem;
+  }
+
+  .about-section h2 {
+    margin-bottom: 0.75rem;
+  }
+</style>
