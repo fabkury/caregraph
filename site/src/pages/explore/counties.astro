@@ -1,0 +1,95 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import fs from 'node:fs';
+import path from 'node:path';
+
+const siteDataDir = path.resolve(process.cwd(), '..', 'site_data', 'county');
+const counties: Array<{ fips: string; name: string; state: string; spending: number | null; riskScore: number | null; readmission: number | null }> = [];
+
+if (fs.existsSync(siteDataDir)) {
+  const files = fs.readdirSync(siteDataDir).filter((f: string) => f.endsWith('.json'));
+  for (const file of files) {
+    const m = JSON.parse(fs.readFileSync(path.join(siteDataDir, file), 'utf-8'));
+    const metrics = m.data?.geographic_variation?.metrics || {};
+    counties.push({
+      fips: m.fips,
+      name: m.county_name,
+      state: m.state,
+      spending: metrics.TOT_MDCR_STDZD_PYMT_PC?.value ?? null,
+      riskScore: metrics.BENE_AVG_RISK_SCRE?.value ?? null,
+      readmission: metrics.ACUTE_HOSP_READMSN_PCT?.value ?? null,
+    });
+  }
+}
+
+counties.sort((a, b) => a.name.localeCompare(b.name));
+
+function fmt(val: number | null, prefix = '', suffix = ''): string {
+  if (val === null) return '\u2014';
+  return prefix + val.toLocaleString(undefined, { maximumFractionDigits: 2 }) + suffix;
+}
+---
+
+<BaseLayout title="Counties" description="Browse all counties on CareGraph">
+  <div class="page-header">
+    <h1>Counties</h1>
+    <p class="subtitle">{counties.length.toLocaleString()} counties</p>
+  </div>
+
+  <div class="card">
+    <div style="overflow-x: auto;">
+      <table class="data-table" id="data-table">
+        <thead>
+          <tr>
+            <th>County</th>
+            <th>FIPS</th>
+            <th>State</th>
+            <th>Standardized Per Capita Spending</th>
+            <th>HCC Risk Score</th>
+            <th>Readmission Rate</th>
+          </tr>
+        </thead>
+        <tbody>
+          {counties.map(c => (
+            <tr>
+              <td><a href={`/county/${c.fips}/`}>{c.name}</a></td>
+              <td><code>{c.fips}</code></td>
+              <td>{c.state}</td>
+              <td>{fmt(c.spending, '$')}</td>
+              <td>{fmt(c.riskScore)}</td>
+              <td>{fmt(c.readmission, '', '%')}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <script>
+    const table = document.getElementById('data-table') as HTMLTableElement | null;
+    if (table) {
+      const headers = table.querySelectorAll('th');
+      headers.forEach((header, index) => {
+        header.addEventListener('click', () => {
+          const tbody = table.querySelector('tbody');
+          if (!tbody) return;
+          const rows = Array.from(tbody.querySelectorAll('tr'));
+          const ascending = header.getAttribute('data-sort') !== 'asc';
+          headers.forEach(h => h.removeAttribute('data-sort'));
+          header.setAttribute('data-sort', ascending ? 'asc' : 'desc');
+          rows.sort((a, b) => {
+            const aVal = a.cells[index]?.textContent || '';
+            const bVal = b.cells[index]?.textContent || '';
+            const aNum = parseFloat(aVal.replace(/[$,%]/g, ''));
+            const bNum = parseFloat(bVal.replace(/[$,%]/g, ''));
+            if (!isNaN(aNum) && !isNaN(bNum)) {
+              return ascending ? aNum - bNum : bNum - aNum;
+            }
+            return ascending ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+          });
+          rows.forEach(row => tbody.appendChild(row));
+        });
+      });
+    }
+  </script>
+</BaseLayout>
