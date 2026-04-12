@@ -2,6 +2,11 @@
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import fs from 'node:fs';
 import path from 'node:path';
+import {
+  ACO_SECTIONS, QUALITY_FLAGS, DEMOG_RISK_PIVOT, RISK_WEIGHTS,
+  MULTI_PATHWAY_MEASURES, getCoveredKeys,
+  type FieldDef, type FieldFormat, type PivotTableDef, type Section,
+} from '../../config/aco-fields';
 
 export function getStaticPaths() {
   const siteDataDir = path.resolve(process.cwd(), '..', 'site_data', 'aco');
@@ -27,19 +32,19 @@ const { id } = Astro.params;
 const name = manifest.aco_name;
 const track = manifest.current_track;
 const msspMetrics = manifest.data?.mssp_performance?.metrics || {};
-const rawData = manifest.data?.mssp_performance?.raw || {};
+const rawData: Record<string, string> = manifest.data?.mssp_performance?.raw || {};
 const participants = manifest.data?.participants || null;
 const snfAffiliates = manifest.data?.snf_affiliates || null;
 
-// Key metrics to highlight
+// Key metrics to highlight (Explore view)
 const highlightMetrics = [
-  { key: 'N_AB', format: 'integer' },
-  { key: 'Sav_rate', format: 'percent' },
-  { key: 'QualScore', format: 'decimal' },
-  { key: 'Per_Capita_Exp_TOTAL_PY', format: 'dollar' },
-  { key: 'GenSaveLoss', format: 'dollar' },
-  { key: 'EarnSaveLoss', format: 'dollar' },
-  { key: 'UpdatedBnchmk', format: 'dollar' },
+  { key: 'N_AB', format: 'integer' as const },
+  { key: 'Sav_rate', format: 'percent' as const },
+  { key: 'QualScore', format: 'decimal' as const },
+  { key: 'Per_Capita_Exp_TOTAL_PY', format: 'dollar' as const },
+  { key: 'GenSaveLoss', format: 'dollar' as const },
+  { key: 'EarnSaveLoss', format: 'dollar' as const },
+  { key: 'UpdatedBnchmk', format: 'dollar' as const },
 ];
 
 function formatValue(val: number, format: string): string {
@@ -48,6 +53,221 @@ function formatValue(val: number, format: string): string {
   if (format === 'integer') return Math.round(val).toLocaleString();
   return val.toFixed(2);
 }
+
+// ── Formatting for structured Table view ──────────────────────────��──
+
+function fmtRaw(val: string | undefined, format: FieldFormat): string {
+  if (val === undefined || val === '' || val === null) return '\u2014';
+  if (val === '*') return val; // handled by template with suppressed styling
+  if (val === '-') return val; // handled by template with not-reported styling
+  const s = String(val).trim();
+  if (s === '' || s === '.' || s === 'N/A') return '\u2014';
+
+  const num = parseFloat(s.replace(/[$,%]/g, ''));
+
+  switch (format) {
+    case 'dollar':
+      return isNaN(num) ? s : '$' + Math.round(num).toLocaleString();
+    case 'dollar_agg':
+      return isNaN(num) ? s : '$' + Math.round(num).toLocaleString();
+    case 'percent':
+      return isNaN(num) ? s : num.toFixed(2) + '%';
+    case 'decimal3':
+      return isNaN(num) ? s : num.toFixed(3);
+    case 'decimal2':
+      return isNaN(num) ? s : num.toFixed(2);
+    case 'integer':
+      return isNaN(num) ? s : Math.round(num).toLocaleString();
+    case 'rate':
+      return isNaN(num) ? s : Math.round(num).toLocaleString();
+    case 'boolean':
+      if (s === '1') return '\u2713';
+      if (s === '0') return '\u2717';
+      return s;
+    case 'date':
+    case 'text':
+    default:
+      return s;
+  }
+}
+
+function isSuppressed(val: string | undefined): boolean {
+  return val === '*';
+}
+
+function isNotReported(val: string | undefined): boolean {
+  return val === '-' || val === undefined || val === '';
+}
+
+// Trend arrow for pivot tables: compare first available period to last
+function trendArrow(first: string | undefined, last: string | undefined): string {
+  if (!first || !last || first === '*' || last === '*' || first === '-' || last === '-') return '';
+  const a = parseFloat(first);
+  const b = parseFloat(last);
+  if (isNaN(a) || isNaN(b)) return '';
+  const pctChange = ((b - a) / Math.abs(a)) * 100;
+  if (pctChange > 3) return '\u2191';  // ↑
+  if (pctChange < -3) return '\u2193'; // ↓
+  return '\u2192'; // →
+}
+
+function trendClass(first: string | undefined, last: string | undefined, lowerIsBetter = false): string {
+  const arrow = trendArrow(first, last);
+  if (!arrow) return '';
+  // For cost/risk metrics: up = bad, down = good
+  if (arrow === '\u2191') return lowerIsBetter ? 'trend-down' : 'trend-up';
+  if (arrow === '\u2193') return lowerIsBetter ? 'trend-up' : 'trend-down';
+  return 'trend-flat';
+}
+
+// ── Demographics computation ─────────────────────────��───────────────
+
+const totalBen = parseInt(rawData.N_AB || '0', 10) || 1;
+
+function pct(key: string): string {
+  const n = parseInt(rawData[key] || '0', 10);
+  if (!n || isNaN(n)) return '0.0';
+  return ((n / totalBen) * 100).toFixed(1);
+}
+
+function pctNum(key: string): number {
+  const n = parseInt(rawData[key] || '0', 10);
+  if (!n || isNaN(n)) return 0;
+  return (n / totalBen) * 100;
+}
+
+const ageGroups = [
+  { key: 'N_Ben_Age_0_64',   label: 'Age 0\u201364' },
+  { key: 'N_Ben_Age_65_74',  label: 'Age 65\u201374' },
+  { key: 'N_Ben_Age_75_84',  label: 'Age 75\u201384' },
+  { key: 'N_Ben_Age_85plus', label: 'Age 85+' },
+];
+
+const genderGroups = [
+  { key: 'N_Ben_Female', label: 'Female' },
+  { key: 'N_Ben_Male',   label: 'Male' },
+];
+
+const raceGroups = [
+  { key: 'N_Ben_Race_White',   label: 'White' },
+  { key: 'N_Ben_Race_Black',   label: 'Black' },
+  { key: 'N_Ben_Race_Hisp',    label: 'Hispanic' },
+  { key: 'N_Ben_Race_Asian',   label: 'Asian' },
+  { key: 'N_Ben_Race_Native',  label: 'Native American' },
+  { key: 'N_Ben_Race_Other',   label: 'Other' },
+  { key: 'N_Ben_Race_Unknown', label: 'Unknown' },
+];
+
+// ── Waterfall steps ──────────────────────────────────────────────────
+
+interface WaterfallStep {
+  num: string;
+  label: string;
+  value: string;
+  cssClass?: string;
+  dividerAfter?: boolean;
+}
+
+function buildWaterfall(): WaterfallStep[] {
+  const steps: WaterfallStep[] = [];
+  const r = rawData;
+
+  steps.push({ num: '1', label: 'Assigned Beneficiaries',              value: fmtRaw(r.N_AB, 'integer') });
+  steps.push({ num: '2', label: 'Historical Benchmark (per capita)',    value: fmtRaw(r.HistBnchmk, 'dollar') });
+  steps.push({ num: '3', label: 'Regional Adjustment',                 value: r.RegAdj ? '+' + fmtRaw(r.RegAdj, 'dollar') : '\u2014' });
+  steps.push({ num: '4', label: 'Prior Savings Adjustment',            value: r.PriorSavAdj ? '+' + fmtRaw(r.PriorSavAdj, 'dollar') : '\u2014' });
+  steps.push({ num: '5', label: 'Adjustment Category',                 value: r.FinalAdjCat || '\u2014' });
+  steps.push({ num: '6', label: 'Updated Benchmark (per capita)',      value: fmtRaw(r.UpdatedBnchmk, 'dollar'), cssClass: 'step-result', dividerAfter: true });
+
+  steps.push({ num: '7', label: 'Total Benchmark (all beneficiaries)', value: fmtRaw(r.ABtotBnchmk, 'dollar_agg') });
+  steps.push({ num: '8', label: 'Total Expenditure (all beneficiaries)', value: fmtRaw(r.ABtotExp, 'dollar_agg') });
+  steps.push({ num: '9', label: 'Per Capita Expenditure (PY)',         value: fmtRaw(r.Per_Capita_Exp_TOTAL_PY, 'dollar') });
+
+  const genSL = parseFloat(r.GenSaveLoss || '0');
+  const genClass = genSL > 0 ? 'step-positive' : genSL < 0 ? 'step-negative' : '';
+  steps.push({ num: '10', label: 'Generated Savings / Losses',         value: fmtRaw(r.GenSaveLoss, 'dollar_agg'), cssClass: `step-result ${genClass}`.trim(), dividerAfter: true });
+
+  steps.push({ num: '11', label: 'Savings Rate',                       value: fmtRaw(r.Sav_rate, 'percent') });
+  steps.push({ num: '12', label: 'Minimum Savings Rate (threshold)',    value: fmtRaw(r.MinSavPerc, 'percent') });
+  steps.push({ num: '13', label: 'Guardrail Applied',                  value: r.Guardrail === '1' ? 'Yes' : r.Guardrail === '0' ? 'No' : '\u2014' });
+  steps.push({ num: '14', label: 'Final Shared Savings Rate',          value: fmtRaw(r.FinalShareRate, 'percent') });
+  steps.push({ num: '15', label: 'Final Shared Loss Rate',             value: fmtRaw(r.FinalLossRate, 'percent') });
+
+  const earnSL = parseFloat(r.EarnSaveLoss || '0');
+  const earnClass = earnSL > 0 ? 'step-positive' : earnSL < 0 ? 'step-negative' : '';
+  steps.push({ num: '16', label: 'Earned Savings / Losses',            value: fmtRaw(r.EarnSaveLoss, 'dollar_agg'), cssClass: `step-result ${earnClass}`.trim(), dividerAfter: true });
+
+  steps.push({ num: '', label: 'Revenue-to-Expense Category',          value: r.Rev_Exp_Cat || '\u2014' });
+
+  // AIP section (only if applicable)
+  if (r.AIP === '1') {
+    steps.push({ num: '', label: 'Advance Investment Payment',           value: 'Yes' });
+    steps.push({ num: '', label: 'AIP Balance',                          value: fmtRaw(r.AIPBalance, 'dollar_agg') });
+    steps.push({ num: '', label: 'AIP Recouped',                         value: fmtRaw(r.AIPRecoup, 'dollar_agg') });
+    steps.push({ num: '', label: 'AIP Owed',                             value: fmtRaw(r.AIPOwe, 'dollar_agg') });
+  }
+
+  return steps;
+}
+
+const waterfallSteps = buildWaterfall();
+
+// ── Quality measures: collapse multi-pathway ─────────────────────────
+
+interface QualityRow {
+  label: string;
+  value: string;
+  lowerIsBetter?: boolean;
+  help?: string;
+  isMultiPathway?: boolean;
+  pathways?: { label: string; value: string }[];
+}
+
+function buildQualityRows(): QualityRow[] {
+  const rows: QualityRow[] = [];
+
+  // Composite score
+  const qs = rawData.QualScore;
+  if (qs && qs !== '-' && qs !== '*') {
+    rows.push({ label: 'Overall Quality Score (Composite)', value: fmtRaw(qs, 'decimal2') });
+  }
+
+  // Standalone measures
+  rows.push({ label: 'All-Cause Unplanned Admissions (risk-adjusted rate)', value: fmtRaw(rawData.Measure_479, 'decimal2'), lowerIsBetter: true, help: 'Risk-standardized rate. Lower indicates better care coordination.' });
+  rows.push({ label: 'Risk-Standardized All-Condition Readmission Rate', value: fmtRaw(rawData.Measure_484, 'decimal2'), lowerIsBetter: true, help: 'Unplanned readmissions within 30 days. Lower is better.' });
+  rows.push({ label: 'Falls: Screening for Future Fall Risk', value: fmtRaw(rawData.QualityID_318, 'decimal2') });
+  rows.push({ label: 'Influenza Immunization', value: fmtRaw(rawData.QualityID_110, 'decimal2') });
+  rows.push({ label: 'Tobacco Use: Screening & Cessation Intervention', value: fmtRaw(rawData.QualityID_226, 'decimal2') });
+  rows.push({ label: 'Colorectal Cancer Screening', value: fmtRaw(rawData.QualityID_113, 'decimal2') });
+  rows.push({ label: 'Breast Cancer Screening', value: fmtRaw(rawData.QualityID_112, 'decimal2') });
+  rows.push({ label: 'Statin Therapy for CVD Prevention', value: fmtRaw(rawData.QualityID_438, 'decimal2') });
+  rows.push({ label: 'Depression Remission at 12 Months', value: fmtRaw(rawData.QualityID_370, 'decimal2') });
+
+  // Multi-pathway measures: show reported value, collapse unreported
+  for (const mp of MULTI_PATHWAY_MEASURES) {
+    const pathways = mp.pathways.map(pw => ({
+      label: pw.label,
+      value: fmtRaw(rawData[`QualityID_${mp.measureId}_${pw.suffix}`], 'decimal2'),
+    }));
+    const reported = pathways.find(p => p.value !== '\u2014' && p.value !== '-');
+    rows.push({
+      label: mp.label,
+      value: reported ? reported.value : '\u2014',
+      lowerIsBetter: mp.lowerIsBetter,
+      isMultiPathway: true,
+      pathways,
+    });
+  }
+
+  return rows;
+}
+
+const qualityRows = buildQualityRows();
+
+// ── Uncovered fields (fallback "Other Fields" section) ───────────────
+
+const coveredKeys = getCoveredKeys();
+const uncoveredEntries = Object.entries(rawData).filter(([key]) => !coveredKeys.has(key));
 
 // Build CSV for download
 const csvHeaders = Object.keys(rawData);
@@ -260,29 +480,607 @@ function badgeClass(type: string): string {
     </div>
   </div>
 
-  <!-- Table mode -->
+  <!-- Table mode — Structured Sections -->
   <div id="table-view" style="display: none;">
-    <div class="card">
-      <h2>All MSSP Performance Fields</h2>
+
+    <!-- Section navigation -->
+    <nav class="section-nav" aria-label="Data sections">
+      {ACO_SECTIONS.map(s => (
+        <a href={`#${s.id}`}>{s.title}</a>
+      ))}
+    </nav>
+
+    <!-- 1. Program Structure -->
+    {(() => {
+      const sec = ACO_SECTIONS.find(s => s.id === 'program-structure')!;
+      return (
+        <section class="aco-section" id={sec.id}>
+          <a href="#table-view" class="section-back">Back to top</a>
+          <h2>{sec.title}</h2>
+          <table class="kv-table">
+            <tbody>
+              {sec.fields!.map(f => (
+                <tr>
+                  <td>
+                    {f.label}
+                    {f.help && <span class="help-tip" title={f.help}>?</span>}
+                  </td>
+                  <td>
+                    {isSuppressed(rawData[f.key])
+                      ? <span class="val-suppressed" title="Value suppressed by CMS to protect beneficiary privacy (cell size <11).">*</span>
+                      : isNotReported(rawData[f.key])
+                        ? <span class="val-not-reported">{'\u2014'}</span>
+                        : fmtRaw(rawData[f.key], f.format)
+                    }
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
+      );
+    })()}
+
+    <!-- 2. Financial Performance — Savings Waterfall -->
+    <section class="aco-section" id="financial-performance">
+      <a href="#table-view" class="section-back">Back to top</a>
+      <h2>Financial Performance</h2>
+      <p class="section-help">Step-by-step savings calculation from historical benchmark to earned savings/losses.</p>
       <div style="overflow-x: auto;">
-        <table class="data-table" id="data-table">
+        <table class="waterfall-table">
           <thead>
             <tr>
-              <th>Field</th>
+              <th>Step</th>
+              <th>Description</th>
               <th>Value</th>
             </tr>
           </thead>
           <tbody>
-            {Object.entries(rawData).map(([key, value]) => (
-              <tr>
-                <td style="font-weight: 500;">{key}</td>
-                <td>{value as string || '\u2014'}</td>
-              </tr>
+            {waterfallSteps.map(step => (
+              <>
+                <tr class={step.cssClass || ''}>
+                  <td>{step.num}</td>
+                  <td>{step.label}</td>
+                  <td>{step.value}</td>
+                </tr>
+                {step.dividerAfter && (
+                  <tr class="step-divider"><td colspan="3"></td></tr>
+                )}
+              </>
             ))}
           </tbody>
         </table>
       </div>
-    </div>
+    </section>
+
+    <!-- 3. Per Capita Expenditure pivot table -->
+    {(() => {
+      const sec = ACO_SECTIONS.find(s => s.id === 'per-capita-expenditure')!;
+      const pivot = sec.pivot!;
+      return (
+        <section class="aco-section" id={sec.id}>
+          <a href="#table-view" class="section-back">Back to top</a>
+          <h2>{sec.title}</h2>
+          {pivot.help && <p class="section-help">{pivot.help}</p>}
+          <div style="overflow-x: auto;">
+            <table class="pivot-table">
+              <thead>
+                <tr>
+                  <th>Population Segment</th>
+                  {pivot.periods.map(p => <th>{p.label}</th>)}
+                  <th>Trend</th>
+                </tr>
+              </thead>
+              <tbody>
+                {pivot.segments.map(seg => {
+                  const vals = pivot.periods.map(p => rawData[`${pivot.fieldPrefix}${seg.code}_${p.code}`]);
+                  const first = vals[0];
+                  const last = vals[vals.length - 1];
+                  return (
+                    <tr>
+                      <td>{seg.label}</td>
+                      {vals.map(v => (
+                        <td>
+                          {isSuppressed(v)
+                            ? <span class="val-suppressed" title="Value suppressed by CMS to protect beneficiary privacy (cell size <11).">*</span>
+                            : isNotReported(v)
+                              ? <span class="val-not-reported">{'\u2014'}</span>
+                              : fmtRaw(v, pivot.format)
+                          }
+                        </td>
+                      ))}
+                      <td class={trendClass(first, last, true)}>
+                        {trendArrow(first, last)}
+                      </td>
+                    </tr>
+                  );
+                })}
+                {/* Total row (PY only) */}
+                <tr class="total-row">
+                  <td>Total</td>
+                  {pivot.periods.map(p => (
+                    <td>
+                      {p.code === 'PY' ? fmtRaw(rawData.Per_Capita_Exp_TOTAL_PY, 'dollar') : ''}
+                    </td>
+                  ))}
+                  <td></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      );
+    })()}
+
+    <!-- 4. Risk Scores (CMS-HCC + Demographic + Weights) -->
+    {(() => {
+      const sec = ACO_SECTIONS.find(s => s.id === 'risk-scores')!;
+      const pivot = sec.pivot!;
+      return (
+        <section class="aco-section" id={sec.id}>
+          <a href="#table-view" class="section-back">Back to top</a>
+          <h2>{sec.title}</h2>
+          {pivot.help && <p class="section-help">{pivot.help}</p>}
+
+          {/* CMS-HCC Risk Scores */}
+          <h3 style="font-size: 1rem; margin-top: 1rem;">{pivot.title}</h3>
+          <div style="overflow-x: auto;">
+            <table class="pivot-table">
+              <thead>
+                <tr>
+                  <th>Population Segment</th>
+                  {pivot.periods.map(p => <th>{p.label}</th>)}
+                  <th>Trend</th>
+                </tr>
+              </thead>
+              <tbody>
+                {pivot.segments.map(seg => {
+                  const vals = pivot.periods.map(p => rawData[`${pivot.fieldPrefix}${seg.code}_${p.code}`]);
+                  const first = vals[0];
+                  const last = vals[vals.length - 1];
+                  return (
+                    <tr>
+                      <td>{seg.label}</td>
+                      {vals.map(v => (
+                        <td>
+                          {isSuppressed(v)
+                            ? <span class="val-suppressed" title="Value suppressed by CMS to protect beneficiary privacy (cell size <11).">*</span>
+                            : isNotReported(v)
+                              ? <span class="val-not-reported">{'\u2014'}</span>
+                              : fmtRaw(v, pivot.format)
+                          }
+                        </td>
+                      ))}
+                      <td class={trendClass(first, last, true)}>
+                        {trendArrow(first, last)}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Demographic Risk Scores */}
+          <h3 style="font-size: 1rem; margin-top: 1.5rem;">{DEMOG_RISK_PIVOT.title}</h3>
+          {DEMOG_RISK_PIVOT.help && <p class="section-help">{DEMOG_RISK_PIVOT.help}</p>}
+          <div style="overflow-x: auto;">
+            <table class="pivot-table">
+              <thead>
+                <tr>
+                  <th>Population Segment</th>
+                  {DEMOG_RISK_PIVOT.periods.map(p => <th>{p.label}</th>)}
+                </tr>
+              </thead>
+              <tbody>
+                {DEMOG_RISK_PIVOT.segments.map(seg => {
+                  const vals = DEMOG_RISK_PIVOT.periods.map(p =>
+                    rawData[`${DEMOG_RISK_PIVOT.fieldPrefix}${seg.code}_${p.code}`]
+                  );
+                  return (
+                    <tr>
+                      <td>{seg.label}</td>
+                      {vals.map(v => (
+                        <td>
+                          {isSuppressed(v)
+                            ? <span class="val-suppressed" title="Value suppressed by CMS to protect beneficiary privacy (cell size <11).">*</span>
+                            : isNotReported(v)
+                              ? <span class="val-not-reported">{'\u2014'}</span>
+                              : fmtRaw(v, DEMOG_RISK_PIVOT.format)
+                          }
+                        </td>
+                      ))}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Risk Redistribution Weights */}
+          <h3 style="font-size: 1rem; margin-top: 1.5rem;">Risk Redistribution Weights (PY)</h3>
+          <p class="section-help">Fraction of the ACO's total risk attributable to each population segment.</p>
+          <table class="kv-table">
+            <tbody>
+              {RISK_WEIGHTS.map(w => (
+                <tr>
+                  <td>{w.label}</td>
+                  <td>
+                    {isSuppressed(rawData[w.key])
+                      ? <span class="val-suppressed" title="Suppressed">*</span>
+                      : isNotReported(rawData[w.key])
+                        ? <span class="val-not-reported">{'\u2014'}</span>
+                        : (() => {
+                            const num = parseFloat(rawData[w.key] || '0');
+                            return isNaN(num) ? rawData[w.key] : (num * 100).toFixed(1) + '%';
+                          })()
+                    }
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
+      );
+    })()}
+
+    <!-- 5. Beneficiary Demographics -->
+    <section class="aco-section" id="demographics">
+      <a href="#table-view" class="section-back">Back to top</a>
+      <h2>Beneficiary Demographics</h2>
+      <p class="section-help">
+        Distribution of {parseInt(rawData.N_AB || '0').toLocaleString()} assigned beneficiaries by age, gender, and race/ethnicity.
+      </p>
+
+      {/* Age Distribution */}
+      <div class="demo-section">
+        <h3>Age Distribution</h3>
+        <div class="demo-bar-group">
+          {ageGroups.map(g => (
+            <div class="demo-bar-row">
+              <span class="demo-bar-label">{g.label}</span>
+              <div class="demo-bar-track">
+                <div class="demo-bar-fill demo-bar-fill-age" style={`width: ${pctNum(g.key)}%`}></div>
+              </div>
+              <span class="demo-bar-pct">{pct(g.key)}%</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Gender */}
+      <div class="demo-section">
+        <h3>Gender</h3>
+        <div class="demo-bar-group">
+          {genderGroups.map(g => (
+            <div class="demo-bar-row">
+              <span class="demo-bar-label">{g.label}</span>
+              <div class="demo-bar-track">
+                <div class="demo-bar-fill demo-bar-fill-gender" style={`width: ${pctNum(g.key)}%`}></div>
+              </div>
+              <span class="demo-bar-pct">{pct(g.key)}%</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Race / Ethnicity */}
+      <div class="demo-section">
+        <h3>Race / Ethnicity</h3>
+        <div class="demo-bar-group">
+          {raceGroups.map(g => (
+            <div class="demo-bar-row">
+              <span class="demo-bar-label">{g.label}</span>
+              <div class="demo-bar-track">
+                <div class="demo-bar-fill demo-bar-fill-race" style={`width: ${pctNum(g.key)}%`}></div>
+              </div>
+              <span class="demo-bar-pct">{pct(g.key)}%</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Special Populations callouts */}
+      <div class="demo-section">
+        <h3>Special Populations</h3>
+        <div class="demo-callout-grid">
+          <div class="demo-callout">
+            <span class="demo-callout-value">{rawData.Perc_Dual || '\u2014'}%</span>
+            <span class="demo-callout-label">Dual-Eligible</span>
+          </div>
+          <div class="demo-callout">
+            <span class="demo-callout-value">{rawData.Perc_LTI || '\u2014'}%</span>
+            <span class="demo-callout-label">Long-Term Institutionalized</span>
+          </div>
+          <div class="demo-callout">
+            <span class="demo-callout-value">{parseInt(rawData.N_Ben_VA_Only || '0') + parseInt(rawData.N_Ben_CBA_and_VA || '0')}</span>
+            <span class="demo-callout-label">VA Beneficiaries</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Enrollment by population category */}
+      <div class="demo-section">
+        <h3>Enrollment by Category (Person-Years)</h3>
+        <div style="overflow-x: auto;">
+          <table class="pivot-table">
+            <thead>
+              <tr>
+                <th>Category</th>
+                <th>BY3</th>
+                <th>PY</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>ESRD</td>
+                <td>{fmtRaw(rawData.N_AB_Year_ESRD_BY3, 'integer')}</td>
+                <td>{fmtRaw(rawData.N_AB_Year_ESRD_PY, 'integer')}</td>
+              </tr>
+              <tr>
+                <td>Disabled</td>
+                <td>{fmtRaw(rawData.N_AB_Year_DIS_BY3, 'integer')}</td>
+                <td>{fmtRaw(rawData.N_AB_Year_DIS_PY, 'integer')}</td>
+              </tr>
+              <tr>
+                <td>Aged, Dual-Eligible</td>
+                <td>{fmtRaw(rawData.N_AB_Year_AGED_Dual_BY3, 'integer')}</td>
+                <td>{fmtRaw(rawData.N_AB_Year_AGED_Dual_PY, 'integer')}</td>
+              </tr>
+              <tr>
+                <td>Aged, Non-Dual</td>
+                <td>{fmtRaw(rawData.N_AB_Year_AGED_NonDual_BY3, 'integer')}</td>
+                <td>{fmtRaw(rawData.N_AB_Year_AGED_NonDual_PY, 'integer')}</td>
+              </tr>
+              <tr class="total-row">
+                <td>Total (PY)</td>
+                <td></td>
+                <td>{fmtRaw(rawData.N_AB_Year_PY, 'integer')}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- 6. Per Capita Spending by Service Category -->
+    {(() => {
+      const sec = ACO_SECTIONS.find(s => s.id === 'spending-by-service')!;
+      return (
+        <section class="aco-section" id={sec.id}>
+          <a href="#table-view" class="section-back">Back to top</a>
+          <h2>{sec.title}</h2>
+          <p class="section-help">Annual per-beneficiary spending by care setting (Parts A & B).</p>
+          <table class="kv-table">
+            <tbody>
+              {sec.fields!.map(f => (
+                <tr>
+                  <td>{f.label}</td>
+                  <td>
+                    {isSuppressed(rawData[f.key])
+                      ? <span class="val-suppressed" title="Value suppressed by CMS to protect beneficiary privacy (cell size <11).">*</span>
+                      : isNotReported(rawData[f.key])
+                        ? <span class="val-not-reported">{'\u2014'}</span>
+                        : fmtRaw(rawData[f.key], f.format)
+                    }
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
+      );
+    })()}
+
+    <!-- 7. Utilization — Admissions & Visits -->
+    {(() => {
+      const sec = ACO_SECTIONS.find(s => s.id === 'admissions-visits')!;
+      // Compute derived ratios
+      const edVis = parseInt(rawData.P_EDV_Vis || '0', 10);
+      const edHosp = parseInt(rawData.P_EDV_Vis_HOSP || '0', 10);
+      const edConversion = edVis > 0 ? ((edHosp / edVis) * 100).toFixed(1) : null;
+      const pcpVis = parseInt(rawData.P_EM_PCP_Vis || '0', 10);
+      const spVis = parseInt(rawData.P_EM_SP_Vis || '0', 10);
+      const pcpSpRatio = spVis > 0 ? (pcpVis / spVis).toFixed(2) : null;
+
+      return (
+        <section class="aco-section" id={sec.id}>
+          <a href="#table-view" class="section-back">Back to top</a>
+          <h2>{sec.title}</h2>
+          <p class="section-help">Rates per 1,000 assigned beneficiaries unless otherwise noted.</p>
+
+          {/* Derived insight callouts */}
+          {(edConversion || pcpSpRatio) && (
+            <div class="demo-callout-grid" style="margin-bottom: 1rem;">
+              {edConversion && (
+                <div class="demo-callout">
+                  <span class="demo-callout-value">{edConversion}%</span>
+                  <span class="demo-callout-label">ED-to-Hospitalization Conversion Rate</span>
+                </div>
+              )}
+              {pcpSpRatio && (
+                <div class="demo-callout">
+                  <span class="demo-callout-value">{pcpSpRatio}:1</span>
+                  <span class="demo-callout-label">PCP-to-Specialist Visit Ratio</span>
+                </div>
+              )}
+            </div>
+          )}
+
+          <table class="kv-table">
+            <tbody>
+              {sec.fields!.map(f => (
+                <tr>
+                  <td>{f.label}</td>
+                  <td>
+                    {isSuppressed(rawData[f.key])
+                      ? <span class="val-suppressed" title="Value suppressed by CMS to protect beneficiary privacy (cell size <11).">*</span>
+                      : isNotReported(rawData[f.key])
+                        ? <span class="val-not-reported">{'\u2014'}</span>
+                        : fmtRaw(rawData[f.key], f.format)
+                    }
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
+      );
+    })()}
+
+    <!-- 8. Provider Composition -->
+    {(() => {
+      const sec = ACO_SECTIONS.find(s => s.id === 'provider-composition')!;
+      const facilityFields = sec.fields!.slice(0, 6);
+      const clinicianFields = sec.fields!.slice(6);
+      return (
+        <section class="aco-section" id={sec.id}>
+          <a href="#table-view" class="section-back">Back to top</a>
+          <h2>{sec.title}</h2>
+          <div class="provider-split">
+            <div>
+              <h3>Facilities</h3>
+              <table class="kv-table">
+                <tbody>
+                  {facilityFields.map(f => (
+                    <tr>
+                      <td>{f.label}</td>
+                      <td>{fmtRaw(rawData[f.key], f.format)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div>
+              <h3>Clinicians</h3>
+              <table class="kv-table">
+                <tbody>
+                  {clinicianFields.map(f => (
+                    <tr>
+                      <td>{f.label}</td>
+                      <td>{fmtRaw(rawData[f.key], f.format)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+      );
+    })()}
+
+    <!-- 9. CAHPS Patient Experience -->
+    {(() => {
+      const sec = ACO_SECTIONS.find(s => s.id === 'cahps')!;
+      return (
+        <section class="aco-section" id={sec.id}>
+          <a href="#table-view" class="section-back">Back to top</a>
+          <h2>{sec.title}</h2>
+          <p class="section-help">Consumer Assessment of Healthcare Providers and Systems survey scores (0–100 scale).</p>
+          <div>
+            {sec.fields!.map(f => {
+              const val = rawData[f.key];
+              const num = parseFloat(val || '0');
+              const hasValue = val && val !== '-' && val !== '*' && !isNaN(num);
+              return (
+                <div class="cahps-row">
+                  <span class="cahps-label">{f.label}</span>
+                  <div class="cahps-bar-track">
+                    {hasValue && (
+                      <div class="cahps-bar-fill" style={`width: ${Math.min(num, 100)}%`}></div>
+                    )}
+                  </div>
+                  <span class="cahps-score">
+                    {isSuppressed(val)
+                      ? <span class="val-suppressed" title="Suppressed">*</span>
+                      : hasValue
+                        ? num.toFixed(1)
+                        : <span class="val-not-reported">{'\u2014'}</span>
+                    }
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      );
+    })()}
+
+    <!-- 10. Clinical Quality Measures -->
+    <section class="aco-section" id="quality-measures">
+      <a href="#table-view" class="section-back">Back to top</a>
+      <h2>Clinical Quality Measures</h2>
+      <p class="section-help">MSSP quality measures. Measures marked "lower is better" are inverted — a lower score indicates better performance.</p>
+
+      <table class="kv-table">
+        <tbody>
+          {qualityRows.map(row => (
+            <tr>
+              <td>
+                {row.label}
+                {row.lowerIsBetter && <span class="measure-direction"> (lower is better)</span>}
+                {row.help && <span class="help-tip" title={row.help}>?</span>}
+                {row.isMultiPathway && row.pathways && (
+                  <details style="margin-top: 0.25rem; font-size: 0.8rem;">
+                    <summary style="color: var(--color-text-muted); cursor: pointer;">Reporting pathways</summary>
+                    <ul style="margin: 0.25rem 0 0 1rem; padding: 0; list-style: none; color: var(--color-text-muted);">
+                      {row.pathways.map(pw => (
+                        <li>{pw.label}: {pw.value === '\u2014' ? 'Not reported' : pw.value}</li>
+                      ))}
+                    </ul>
+                  </details>
+                )}
+              </td>
+              <td>
+                {isSuppressed(row.value)
+                  ? <span class="val-suppressed" title="Suppressed">*</span>
+                  : row.value === '\u2014'
+                    ? <span class="val-not-reported">{'\u2014'}</span>
+                    : row.value
+                }
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      {/* Quality Reporting Flags */}
+      <h3 style="font-size: 1rem; margin-top: 1.5rem;">Quality Reporting Flags</h3>
+      <div class="quality-flags">
+        {QUALITY_FLAGS.map(flag => {
+          const val = rawData[flag.key];
+          const isYes = val === '1';
+          const isNo = val === '0';
+          return (
+            <div class="quality-flag">
+              <span class={`flag-icon ${isYes ? 'flag-icon-yes' : isNo ? 'flag-icon-no' : 'flag-icon-na'}`}>
+                {isYes ? '\u2713' : isNo ? '\u2717' : '?'}
+              </span>
+              <span>{flag.label}</span>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+
+    <!-- Uncovered fields (if any remain) -->
+    {uncoveredEntries.length > 0 && (
+      <section class="aco-section" id="other-fields">
+        <h2>Other Fields ({uncoveredEntries.length})</h2>
+        <p class="section-help">Additional raw MSSP fields not yet categorized into a domain section.</p>
+        <table class="kv-table">
+          <tbody>
+            {uncoveredEntries.map(([key, value]) => (
+              <tr>
+                <td>{key}</td>
+                <td>{(value as string) || '\u2014'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </section>
+    )}
+
   </div>
 
   <script>
@@ -309,27 +1107,6 @@ function badgeClass(type: string): string {
         exploreView!.style.display = mode === 'explore' ? '' : 'none';
         tableView!.style.display = mode === 'table' ? '' : 'none';
       }
-    }
-
-    // Simple table sorting
-    const table = document.getElementById('data-table') as HTMLTableElement | null;
-    if (table) {
-      const headers = table.querySelectorAll('th');
-      headers.forEach((header, index) => {
-        header.addEventListener('click', () => {
-          const tbody = table.querySelector('tbody');
-          if (!tbody) return;
-          const rows = Array.from(tbody.querySelectorAll('tr'));
-          const ascending = header.getAttribute('data-sort') !== 'asc';
-          header.setAttribute('data-sort', ascending ? 'asc' : 'desc');
-          rows.sort((a, b) => {
-            const aVal = a.cells[index]?.textContent || '';
-            const bVal = b.cells[index]?.textContent || '';
-            return ascending ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
-          });
-          rows.forEach(row => tbody.appendChild(row));
-        });
-      });
     }
   </script>
 

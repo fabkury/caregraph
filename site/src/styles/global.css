@@ -545,3 +545,443 @@ textarea:focus-visible,
   outline-offset: 2px;
   border-radius: 3px;
 }
+
+/* ── ACO Structured Table View ──────────────────────────────────────── */
+
+/* Section navigation (table of contents) */
+.section-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-bottom: 1.5rem;
+  padding: 1rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+}
+
+.section-nav a {
+  display: inline-block;
+  padding: 0.3rem 0.7rem;
+  font-size: 0.8rem;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  color: var(--color-text-muted);
+  text-decoration: none;
+  transition: all 0.15s;
+}
+
+.section-nav a:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+  text-decoration: none;
+}
+
+/* Section cards */
+.aco-section {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 1.5rem;
+  margin-bottom: 1rem;
+}
+
+.aco-section h2 {
+  margin-bottom: 0.25rem;
+  font-size: 1.2rem;
+}
+
+.aco-section .section-help {
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+  margin-bottom: 1rem;
+  margin-top: 0;
+}
+
+.section-back {
+  float: right;
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+}
+
+.section-back:hover {
+  color: var(--color-primary);
+  text-decoration: none;
+}
+
+/* Pivot tables (expenditure, risk scores) */
+.pivot-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.pivot-table th,
+.pivot-table td {
+  padding: 0.5rem 0.75rem;
+  text-align: right;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.pivot-table th {
+  font-weight: 600;
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+}
+
+.pivot-table th:first-child,
+.pivot-table td:first-child {
+  text-align: left;
+  font-weight: 500;
+}
+
+.pivot-table tr:hover td {
+  background: var(--color-border-light);
+}
+
+.pivot-table .trend-up { color: #dc2626; }
+.pivot-table .trend-down { color: #059669; }
+.pivot-table .trend-flat { color: var(--color-text-muted); }
+
+/* For cost metrics, reverse: up = bad (red), down = good (green).
+   For risk scores, same applies (lower risk = healthier). */
+
+.pivot-table .total-row td {
+  font-weight: 600;
+  border-top: 2px solid var(--color-border);
+}
+
+/* Waterfall table (financial performance) */
+.waterfall-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.waterfall-table th,
+.waterfall-table td {
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.waterfall-table th {
+  font-weight: 600;
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  text-align: left;
+}
+
+.waterfall-table td:nth-child(1) {
+  color: var(--color-text-muted);
+  width: 2rem;
+  text-align: center;
+}
+
+.waterfall-table td:nth-child(3) {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.waterfall-table tr:hover td {
+  background: var(--color-border-light);
+}
+
+.waterfall-table .step-result td {
+  font-weight: 600;
+}
+
+.waterfall-table .step-positive {
+  color: #059669;
+}
+
+.waterfall-table .step-negative {
+  color: #dc2626;
+}
+
+.waterfall-table .step-divider td {
+  border-bottom: 2px solid var(--color-border);
+  padding: 0.25rem;
+}
+
+/* Demographic distribution bars */
+.demo-section {
+  margin-bottom: 1.25rem;
+}
+
+.demo-section h3 {
+  font-size: 0.95rem;
+  margin-bottom: 0.5rem;
+  color: var(--color-text);
+}
+
+.demo-bar-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.demo-bar-row {
+  display: grid;
+  grid-template-columns: 180px 1fr 60px;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 0.85rem;
+}
+
+.demo-bar-label {
+  color: var(--color-text-muted);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.demo-bar-track {
+  height: 20px;
+  background: var(--color-border-light);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.demo-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  min-width: 2px;
+  transition: width 0.3s ease;
+}
+
+.demo-bar-fill-age { background: #3b82f6; }
+.demo-bar-fill-gender { background: #8b5cf6; }
+.demo-bar-fill-race { background: #06b6d4; }
+
+.demo-bar-pct {
+  font-weight: 600;
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.demo-callout-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+}
+
+.demo-callout {
+  padding: 0.75rem;
+  background: var(--color-border-light);
+  border-radius: 6px;
+  font-size: 0.85rem;
+}
+
+.demo-callout .demo-callout-value {
+  font-size: 1.25rem;
+  font-weight: 700;
+  display: block;
+}
+
+.demo-callout .demo-callout-label {
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+}
+
+/* Quality flags (checklist) */
+.quality-flags {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 0.35rem;
+}
+
+.quality-flag {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0;
+  font-size: 0.85rem;
+}
+
+.flag-icon {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.7rem;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.flag-icon-yes {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.flag-icon-no {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.flag-icon-na {
+  background: var(--color-border-light);
+  color: var(--color-text-muted);
+}
+
+/* Quality measure indicator (lower-is-better) */
+.measure-direction {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  font-style: italic;
+}
+
+/* Suppressed value indicator */
+.val-suppressed {
+  color: var(--color-text-muted);
+  font-style: italic;
+  cursor: help;
+}
+
+.val-not-reported {
+  color: var(--color-text-muted);
+  font-size: 0.85em;
+}
+
+/* Provider composition split */
+.provider-split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem;
+}
+
+.provider-split h3 {
+  font-size: 0.95rem;
+  margin-bottom: 0.5rem;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  font-size: 0.8rem;
+  letter-spacing: 0.05em;
+}
+
+/* KV table used in simple sections */
+.kv-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.kv-table td {
+  padding: 0.4rem 0.75rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.kv-table td:first-child {
+  color: var(--color-text-muted);
+  width: 55%;
+}
+
+.kv-table td:last-child {
+  font-weight: 500;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.kv-table tr:hover td {
+  background: var(--color-border-light);
+}
+
+/* Help tooltips */
+.help-tip {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--color-border);
+  color: var(--color-text-muted);
+  font-size: 0.65rem;
+  text-align: center;
+  line-height: 16px;
+  cursor: help;
+  margin-left: 0.3rem;
+  vertical-align: middle;
+}
+
+/* CAHPS bar scores */
+.cahps-row {
+  display: grid;
+  grid-template-columns: 1fr 120px 50px;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.4rem 0;
+  border-bottom: 1px solid var(--color-border-light);
+  font-size: 0.9rem;
+}
+
+.cahps-row:last-child { border-bottom: none; }
+
+.cahps-label {
+  color: var(--color-text);
+}
+
+.cahps-bar-track {
+  height: 16px;
+  background: var(--color-border-light);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.cahps-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  background: #3b82f6;
+  min-width: 2px;
+}
+
+.cahps-score {
+  font-weight: 600;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.85rem;
+}
+
+/* Responsive overrides for ACO structured view */
+@media (max-width: 768px) {
+  .provider-split {
+    grid-template-columns: 1fr;
+  }
+
+  .demo-bar-row {
+    grid-template-columns: 120px 1fr 50px;
+  }
+
+  .quality-flags {
+    grid-template-columns: 1fr;
+  }
+
+  .cahps-row {
+    grid-template-columns: 1fr 80px 45px;
+  }
+
+  .section-nav {
+    gap: 0.3rem;
+  }
+
+  .section-nav a {
+    font-size: 0.7rem;
+    padding: 0.25rem 0.5rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .demo-bar-row {
+    grid-template-columns: 1fr;
+    gap: 0.2rem;
+  }
+
+  .demo-bar-label {
+    text-align: left;
+  }
+}
