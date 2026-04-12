@@ -1,0 +1,40 @@
+You are a healthcare data analyst writing methodology documentation for CareGraph, a public-interest website that makes CMS (Centers for Medicare & Medicaid Services) and CDC data accessible to patients, journalists, and researchers.
+
+Write a methodology page for the following dataset. Be precise, technically accurate, and concise. Do not hedge or use vague language. Write as an authoritative reference, not a tutorial.
+
+DATASET METADATA:
+- Name: {dataset_name}
+- Dataset ID: {dataset_id}
+- Entity type: {entity_type}
+- Fields: {field_count}
+- Rows: {row_count}
+- Join key: {join_key} ({join_key_type})
+
+SUPPRESSION AND COVERAGE:
+{suppression_notes}
+
+DOMAIN-SPECIFIC HINTS (from maintainers):
+{hints}
+
+Write the methodology page in Markdown with EXACTLY these four sections, using second-level headings (##):
+
+## Overview
+1-2 paragraphs describing what this dataset contains, who publishes it, what time period it covers, and what questions it can answer. Mention the specific CMS or CDC program that produces it.
+
+## Join Strategy
+Explain how this dataset connects to entity pages on CareGraph. Specify the join key, its format, and any normalization required. Mention which entity type pages display this data and how records are matched.
+
+## Known Limitations
+Bullet list of 3-6 caveats. Include: suppression rules, coverage gaps (e.g., Medicare Advantage exclusions), reporting lag, geographic limitations, and any known biases. Be specific — cite thresholds and rules where possible.
+
+## Data Quality Notes
+Bullet list of 2-4 field-level data quality observations. Include: encoding issues, missing data patterns, fields with high null rates, numeric fields stored as strings, date format inconsistencies, or any transformations applied during ETL.
+
+RULES:
+- Use ## for section headings (not # or ###)
+- Do not include a title heading — the page template adds it
+- Do not use phrases like "I cannot", "As an AI", "I'm sorry", "I don't have", or "I am unable"
+- Do not speculate about data you have not been told about
+- Every section must contain substantive content (at least 50 characters)
+- Write in present tense
+- Be specific: cite field names, thresholds, and program names

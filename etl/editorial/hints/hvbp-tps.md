@@ -1,0 +1,5 @@
+- The Total Performance Score (TPS) is a weighted composite: Clinical Outcomes (25%), Safety (25%), Person & Community Engagement (25%), and Efficiency & Cost Reduction (25%) — but a hospital missing an entire domain has the remaining domains reweighted, making cross-hospital comparisons imprecise.
+- Hospitals that do not meet the minimum case thresholds for enough measures in a domain receive no domain score; approximately 15-20% of IPPS hospitals do not receive a TPS in any given year.
+- The "Efficiency & Cost Reduction" domain uses Medicare Spending Per Beneficiary (MSPB) which only captures fee-for-service spending — hospitals in markets with high Medicare Advantage penetration have MSPB calculated on a smaller, potentially non-representative FFS population.
+- Performance scores reflect both achievement (vs. national floor/benchmark) and improvement (vs. the hospital's own baseline); a hospital can score well on improvement while still being below the national median.
+- Critical Access Hospitals, Maryland waiver hospitals, hospitals with fewer than 25 cases in all applicable measures, and hospitals cited for safety deficiencies are excluded from HVBP.

@@ -1,0 +1,5 @@
+- The "Hospital Overall Rating" (star rating) is calculated by CMS using a latent variable model grouping ~60 measures into 5 categories; hospitals can have "Not Available" when they have insufficient measure data or have opted out of star ratings.
+- Emergency services is self-reported by hospitals and does not distinguish between full ED, freestanding ED, and urgent care center capabilities.
+- VA hospitals, tribal hospitals, and hospitals in US territories are included in the file but often lack star ratings and may use non-standard CCN formats (e.g., VA facilities have CCNs starting with certain alpha prefixes that may not match other CMS datasets).
+- The "Hospital Type" field conflates Critical Access Hospitals (CAHs) with other acute care types; CAHs have fundamentally different cost reporting and payment rules that affect comparability of metrics across types.
+- Address and phone number data can be stale — CMS updates provider enrollment data on a different cycle than the quality datasets, so a hospital may have moved or changed phone numbers since the last update.

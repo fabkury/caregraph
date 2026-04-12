@@ -1,0 +1,208 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import fs from 'node:fs';
+import path from 'node:path';
+
+// Read site_data/index.json for dataset stats
+const siteDataDir = path.resolve(process.cwd(), '..', 'site_data');
+const indexPath = path.join(siteDataDir, 'index.json');
+
+let indexData: any = { entities: {} };
+if (fs.existsSync(indexPath)) {
+  indexData = JSON.parse(fs.readFileSync(indexPath, 'utf-8'));
+}
+
+// Read editorial output directory to find available methodology pages
+const editorialDir = path.join(siteDataDir, 'editorial');
+let editorialFiles: string[] = [];
+if (fs.existsSync(editorialDir)) {
+  editorialFiles = fs.readdirSync(editorialDir).filter((f: string) => f.endsWith('.md'));
+}
+
+// Dataset registry — maps dataset_id to display info
+const datasetRegistry: Record<string, { name: string; entity: string; vintage: string }> = {
+  'xubh-q36u': { name: 'Hospital General Information', entity: 'hospital', vintage: 'FY2026' },
+  'hrrp': { name: 'Hospital Readmissions Reduction Program', entity: 'hospital', vintage: 'FY2026' },
+  'hvbp-tps': { name: 'Hospital Value-Based Purchasing TPS', entity: 'hospital', vintage: 'FY2026' },
+  'nh-provider-info': { name: 'Nursing Home Provider Info', entity: 'snf', vintage: 'Mar 2026' },
+  'nh-quality-mds': { name: 'SNF Quality Measures (MDS)', entity: 'snf', vintage: 'Mar 2026' },
+  'mssp-performance': { name: 'MSSP ACO Performance PY2024', entity: 'aco', vintage: 'PY2024' },
+  'geo-var-county': { name: 'Medicare Geographic Variation by County', entity: 'county', vintage: '2014-2023' },
+  'cdc-places': { name: 'CDC PLACES County-Level Data', entity: 'county', vintage: '2023 Release' },
+};
+
+// Build table rows
+interface DatasetRow {
+  id: string;
+  name: string;
+  entity: string;
+  vintage: string;
+  rowCount: string;
+  hasMethodology: boolean;
+}
+
+const datasets: DatasetRow[] = Object.entries(datasetRegistry).map(([id, info]) => {
+  // Try to find row count from index.json
+  let rowCount = '—';
+  const entities = indexData.entities || {};
+  for (const [entityType, entityInfo] of Object.entries(entities) as [string, any][]) {
+    if (entityInfo.dataset_id === id) {
+      rowCount = entityInfo.count?.toLocaleString() || '—';
+    }
+    // Check enrichment datasets
+    if (entityInfo.enriched_with?.includes(id)) {
+      rowCount = entityInfo.enriched_count?.toLocaleString() || '—';
+    }
+  }
+
+  return {
+    id,
+    name: info.name,
+    entity: info.entity,
+    vintage: info.vintage,
+    rowCount,
+    hasMethodology: editorialFiles.includes(`${id}.md`),
+  };
+});
+---
+
+<BaseLayout title="Methodology" description="How CareGraph processes, validates, and presents CMS and CDC public data.">
+  <div class="page-header">
+    <h1>Methodology</h1>
+    <p class="subtitle">How CareGraph processes, validates, and presents public healthcare data.</p>
+  </div>
+
+  <div class="card">
+    <h2>Our Approach: Trust-First Design</h2>
+    <p>
+      CareGraph exists because public healthcare data should be publicly accessible — not locked
+      behind vendor portals, paywalls, or impenetrable government websites. Every number on this
+      site comes from an official CMS or CDC dataset. We do not model, predict, or editorialize
+      the data; we clean it, connect it, and present it with full provenance.
+    </p>
+    <p>
+      Trust-first design means three things:
+    </p>
+    <ul>
+      <li>
+        <strong>Provenance on every page.</strong> Every entity page shows exactly which dataset
+        produced each number, when it was downloaded, and how many rows were in the source file.
+      </li>
+      <li>
+        <strong>Limitations up front.</strong> We document known caveats, suppression rules, and
+        coverage gaps for every dataset — not buried in footnotes, but in dedicated methodology
+        pages linked from every entity page.
+      </li>
+      <li>
+        <strong>Reproducible pipeline.</strong> The entire ETL pipeline is open source. Anyone can
+        re-run it, verify the outputs, and file an
+        <a href="https://github.com/caregraph/caregraph/issues/new?template=error_report.md">error report</a>
+        if something looks wrong.
+      </li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2>Datasets</h2>
+    <p>
+      CareGraph ingests {datasets.length} datasets from CMS and CDC. Each dataset has a dedicated
+      methodology page describing its contents, join strategy, limitations, and data quality notes.
+    </p>
+    <div style="overflow-x: auto;">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Dataset</th>
+            <th>Entity Type</th>
+            <th>Vintage</th>
+            <th>Entity Count</th>
+            <th>Methodology</th>
+          </tr>
+        </thead>
+        <tbody>
+          {datasets.map(ds => (
+            <tr>
+              <td style="font-weight: 500;">{ds.name}</td>
+              <td><span class={`badge badge-${ds.entity}`}>{ds.entity}</span></td>
+              <td>{ds.vintage}</td>
+              <td>{ds.rowCount}</td>
+              <td>
+                {ds.hasMethodology ? (
+                  <a href={`/methodology/dataset/${ds.id}/`}>View details</a>
+                ) : (
+                  <span style="color: var(--color-text-muted);">Pending</span>
+                )}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card" id="limitations-ledger">
+    <h2>Limitations Ledger</h2>
+    <p>
+      Across all datasets, the following systemic limitations apply:
+    </p>
+    <ul>
+      <li>
+        <strong>Medicare FFS only.</strong> Most CMS datasets cover Medicare fee-for-service
+        beneficiaries. Medicare Advantage enrollees (over 50% of Medicare beneficiaries as of 2024)
+        are generally excluded. This is not a sampling choice — MA plans are not required to report
+        claims-level data to CMS in the same way FFS does.
+      </li>
+      <li>
+        <strong>Reporting lag.</strong> CMS data typically reflects a measurement period 12-24
+        months prior to the data release date. Quality metrics like star ratings, readmission
+        ratios, and VBP scores use multi-year measurement windows that lag even further.
+      </li>
+      <li>
+        <strong>Cell-size suppression.</strong> To protect patient privacy, CMS suppresses values
+        when the underlying count is fewer than 11 (sometimes 25 for specific programs). This
+        disproportionately affects rural providers and small counties.
+      </li>
+      <li>
+        <strong>Facility vs. system.</strong> CMS data is organized by individual facility CCN, not
+        by health system. A hospital system operating 15 facilities appears as 15 separate entities.
+        System-level aggregation is not currently supported in CareGraph.
+      </li>
+      <li>
+        <strong>Model-based estimates.</strong> CDC PLACES county-level prevalence estimates are
+        model-derived (MRP from BRFSS), not direct measurements. Confidence intervals should be
+        consulted, especially for small-population counties.
+      </li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2>ETL Pipeline</h2>
+    <p>
+      The CareGraph ETL (Extract, Transform, Load) pipeline runs as a single Python script that:
+    </p>
+    <ol>
+      <li>Downloads raw CSV files from data.cms.gov and data.cdc.gov APIs</li>
+      <li>Builds base entity manifests (one JSON file per hospital, county, SNF, or ACO)</li>
+      <li>Enriches entities with data from supplementary datasets (HRRP, HVBP, CDC PLACES)</li>
+      <li>Builds cross-links between related entities (hospitals in counties, SNFs near hospitals)</li>
+      <li>Generates a search index for the site-wide search feature</li>
+      <li>Writes a manifest index (<code>site_data/index.json</code>) with pipeline metadata</li>
+    </ol>
+    <p>
+      The pipeline is idempotent: re-running it on the same day skips already-downloaded files.
+      All source data is stored with content-addressable filenames
+      (<code>{'{dataset_id}_{date}.csv'}</code>) to enable reproducibility.
+    </p>
+  </div>
+
+  <div class="card">
+    <h2>Report an Error</h2>
+    <p>
+      If you find incorrect data, a missing entity, or a methodology concern, please
+      <a href="https://github.com/caregraph/caregraph/issues/new?template=error_report.md">
+        file an error report
+      </a>
+      on GitHub. We review every report and publish corrections with full changelog entries.
+    </p>
+  </div>
+</BaseLayout>

@@ -1,0 +1,5 @@
+- Excess Readmission Ratios (ERRs) are risk-adjusted using CMS's hierarchical logistic regression model, but the model does not adjust for socioeconomic status despite known associations between poverty and readmission rates — this is a longstanding criticism of the HRRP methodology.
+- Hospitals with fewer than 25 eligible discharges for a given condition are excluded from that condition's ERR calculation; the "Too Few to Report" designation means suppression, not zero readmissions.
+- The dual-eligible (Medicare-Medicaid) adjustment factor was added starting FY2019 but does not fully account for social risk factors that drive readmissions in safety-net hospitals.
+- HRRP penalties apply only to IPPS hospitals — Critical Access Hospitals, Maryland waiver hospitals, and hospitals in US territories are exempt from the penalty but may still appear in the data with ERR values.
+- The 3-year measurement window (e.g., July 2019 through June 2022 for FY2026) means the data reflects a lagging indicator; recent quality improvements or declines are not yet captured.

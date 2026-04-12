@@ -1,0 +1,185 @@
+---
+import BaseLayout from '../../../layouts/BaseLayout.astro';
+import fs from 'node:fs';
+import path from 'node:path';
+
+// Dataset registry for display names and metadata
+const datasetRegistry: Record<string, { name: string; entity: string; vintage: string }> = {
+  'xubh-q36u': { name: 'Hospital General Information', entity: 'hospital', vintage: 'FY2026' },
+  'hrrp': { name: 'Hospital Readmissions Reduction Program', entity: 'hospital', vintage: 'FY2026' },
+  'hvbp-tps': { name: 'Hospital Value-Based Purchasing TPS', entity: 'hospital', vintage: 'FY2026' },
+  'nh-provider-info': { name: 'Nursing Home Provider Info', entity: 'snf', vintage: 'Mar 2026' },
+  'nh-quality-mds': { name: 'SNF Quality Measures (MDS)', entity: 'snf', vintage: 'Mar 2026' },
+  'mssp-performance': { name: 'MSSP ACO Performance PY2024', entity: 'aco', vintage: 'PY2024' },
+  'geo-var-county': { name: 'Medicare Geographic Variation by County', entity: 'county', vintage: '2014-2023' },
+  'cdc-places': { name: 'CDC PLACES County-Level Data', entity: 'county', vintage: '2023 Release' },
+};
+
+export function getStaticPaths() {
+  // Read editorial output files from site_data/editorial/
+  const editorialDir = path.resolve(process.cwd(), '..', 'site_data', 'editorial');
+  const paths: Array<{ params: { id: string }; props: { content: string; datasetId: string } }> = [];
+
+  if (!fs.existsSync(editorialDir)) return paths;
+
+  const files = fs.readdirSync(editorialDir).filter((f: string) => f.endsWith('.md'));
+  for (const file of files) {
+    const datasetId = file.replace('.md', '');
+    const content = fs.readFileSync(path.join(editorialDir, file), 'utf-8');
+    paths.push({
+      params: { id: datasetId },
+      props: { content, datasetId },
+    });
+  }
+
+  return paths;
+}
+
+const { content, datasetId } = Astro.props;
+const { id } = Astro.params;
+
+// Get dataset display info
+const dsInfo = datasetRegistry[datasetId] || { name: datasetId, entity: 'unknown', vintage: 'unknown' };
+
+// Read index.json for provenance metadata
+const siteDataDir = path.resolve(process.cwd(), '..', 'site_data');
+const indexPath = path.join(siteDataDir, 'index.json');
+let indexData: any = { entities: {}, generated: '' };
+if (fs.existsSync(indexPath)) {
+  indexData = JSON.parse(fs.readFileSync(indexPath, 'utf-8'));
+}
+
+// Find row count and download date from index
+let rowCount = '—';
+let downloadDate = indexData.generated || '—';
+const entities = indexData.entities || {};
+for (const [entityType, entityInfo] of Object.entries(entities) as [string, any][]) {
+  if (entityInfo.dataset_id === datasetId) {
+    rowCount = entityInfo.count?.toLocaleString() || '—';
+  }
+  if (entityInfo.enriched_with?.includes(datasetId)) {
+    rowCount = entityInfo.enriched_count?.toLocaleString() || '—';
+  }
+}
+
+// Simple markdown-to-HTML conversion for the editorial content
+// Handles: ## headings, paragraphs, bullet lists, bold, italic, code, links
+function markdownToHtml(md: string): string {
+  const lines = md.split('\n');
+  const htmlParts: string[] = [];
+  let inList = false;
+  let paragraph: string[] = [];
+
+  function flushParagraph() {
+    if (paragraph.length > 0) {
+      const text = paragraph.join(' ');
+      if (text.trim()) {
+        htmlParts.push(`<p>${inlineFormat(text)}</p>`);
+      }
+      paragraph = [];
+    }
+  }
+
+  function inlineFormat(text: string): string {
+    // Bold
+    text = text.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+    // Italic
+    text = text.replace(/\*(.+?)\*/g, '<em>$1</em>');
+    // Inline code
+    text = text.replace(/`([^`]+)`/g, '<code>$1</code>');
+    // Links
+    text = text.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>');
+    return text;
+  }
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+
+    // Heading
+    if (trimmed.startsWith('## ')) {
+      flushParagraph();
+      if (inList) {
+        htmlParts.push('</ul>');
+        inList = false;
+      }
+      const headingText = trimmed.slice(3);
+      htmlParts.push(`<h2>${inlineFormat(headingText)}</h2>`);
+      continue;
+    }
+
+    // Bullet list item
+    if (trimmed.startsWith('- ')) {
+      flushParagraph();
+      if (!inList) {
+        htmlParts.push('<ul>');
+        inList = true;
+      }
+      htmlParts.push(`<li>${inlineFormat(trimmed.slice(2))}</li>`);
+      continue;
+    }
+
+    // Empty line
+    if (trimmed === '') {
+      flushParagraph();
+      if (inList) {
+        htmlParts.push('</ul>');
+        inList = false;
+      }
+      continue;
+    }
+
+    // Regular text — accumulate into paragraph
+    paragraph.push(trimmed);
+  }
+
+  flushParagraph();
+  if (inList) {
+    htmlParts.push('</ul>');
+  }
+
+  return htmlParts.join('\n');
+}
+
+const renderedContent = markdownToHtml(content);
+---
+
+<BaseLayout title={`${dsInfo.name} — Methodology`} description={`Methodology documentation for the ${dsInfo.name} dataset used in CareGraph.`}>
+  <div class="page-header">
+    <div style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
+      <span class={`badge badge-${dsInfo.entity}`}>{dsInfo.entity}</span>
+      <h1 style="margin: 0;">{dsInfo.name}</h1>
+    </div>
+    <p class="subtitle">
+      Dataset ID: <code>{datasetId}</code> &middot;
+      <a href="/methodology/">&larr; Back to Methodology Hub</a>
+    </p>
+  </div>
+
+  <div class="card" style="margin-bottom: 1.5rem;">
+    <h2>Provenance</h2>
+    <dl class="kv-grid">
+      <dt>Dataset ID</dt>
+      <dd><code>{datasetId}</code></dd>
+      <dt>Entity Type</dt>
+      <dd><span class={`badge badge-${dsInfo.entity}`}>{dsInfo.entity}</span></dd>
+      <dt>Vintage</dt>
+      <dd>{dsInfo.vintage}</dd>
+      <dt>Entity Count</dt>
+      <dd>{rowCount}</dd>
+      <dt>Last ETL Run</dt>
+      <dd>{downloadDate}</dd>
+    </dl>
+  </div>
+
+  <div class="card methodology-content">
+    <Fragment set:html={renderedContent} />
+  </div>
+
+  <div class="methodology-stub" style="margin-top: 2rem;">
+    <p>
+      <a href="/methodology/">&larr; Back to Methodology Hub</a>
+      &middot;
+      <a href="https://github.com/caregraph/caregraph/issues/new?template=error_report.md">Report an error</a>
+    </p>
+  </div>
+</BaseLayout>

@@ -7,7 +7,8 @@ Runs the full ETL pipeline:
   3. Enrich entities (HRRP, HVBP, FIPS, CDC PLACES)
   4. Build cross-links between entities
   5. Build search index
-  6. Write output index to site_data/
+  6. Copy editorial output to site_data/editorial/
+  7. Write output index to site_data/
 
 Usage:
     python etl/run.py
@@ -16,6 +17,7 @@ Usage:
 from __future__ import annotations
 
 import json
+import shutil
 import sys
 import time
 from datetime import date
@@ -112,8 +114,20 @@ def main() -> None:
     print("\n[Step 9] Building search index...")
     search_count = build_search_index(site_data_dir)
 
-    # ── Step 10: Write manifest index ───────────────────────────────
-    print("\n[Step 10] Writing manifest index...")
+    # ── Step 10: Copy editorial output to site_data ──────────────────
+    print("\n[Step 10] Copying editorial output to site_data/editorial/...")
+    editorial_src = REPO_ROOT / "etl" / "editorial" / "output"
+    editorial_dst = site_data_dir / "editorial"
+    editorial_dst.mkdir(parents=True, exist_ok=True)
+    editorial_count = 0
+    if editorial_src.exists():
+        for md_file in editorial_src.glob("*.md"):
+            shutil.copy2(md_file, editorial_dst / md_file.name)
+            editorial_count += 1
+    print(f"  -> Copied {editorial_count} editorial files to {editorial_dst}")
+
+    # ── Step 11: Write manifest index ───────────────────────────────
+    print("\n[Step 11] Writing manifest index...")
     index = {
         "generated": today.isoformat(),
         "entities": {
@@ -166,6 +180,7 @@ def main() -> None:
     print(f"  SNFs:      {snf_count:,} manifests")
     print(f"  ACOs:      {aco_count:,} manifests")
     print(f"  Search:    {search_count:,} index entries")
+    print(f"  Editorial: {editorial_count} methodology pages")
     print(f"  Output:    {site_data_dir}")
     print("=" * 60)
 
