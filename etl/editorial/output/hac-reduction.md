@@ -1,5 +1,3 @@
-Here is the methodology page:
-
 ## Overview
 
 The Hospital-Acquired Condition (HAC) Reduction Program dataset is published by CMS under Section 1886(p) of the Social Security Act. It contains one row per participating hospital with a Total HAC Score, a binary payment reduction flag, and individual measure scores across two domains: the CMS Patient Safety Indicator composite (PSI-90, claims-based) and six CDC National Healthcare Safety Network (NHSN) Healthcare-Associated Infection (HAI) measures (CLABSI, CAUTI, SSI colon, SSI hysterectomy, MRSA bacteremia, and C. difficile infection). Each measure includes a Standardized Infection Ratio (SIR) and a Weighted Z-Score that contributes to the composite. The current file covers FY2026, with the PSI-90 and HAI measurement periods spanning approximately 2-3 years ending in 2022-2023. CMS sources the data from the Provider Data API on data.cms.gov (dataset ID `yq43-i98g`).
@@ -27,5 +25,3 @@ Each row joins to a hospital entity page using the Facility ID field, which cont
 - **Column name variation across vintages.** CMS has used different header names and casing between file releases (e.g., `Total HAC Score` vs. `Total_HAC_Score` vs. `Total Score`, `CLABSI SIR` vs. `CLABSI_SIR`). The ETL's `_find_column()` function resolves this via candidate-list matching, but new header names in future releases may require adding candidates.
 
 ---
-
-It looks like the file write was blocked by permissions. Would you like me to try writing the file again, or would you prefer to copy the content above into `etl/editorial/output/hac-reduction.md` yourself?

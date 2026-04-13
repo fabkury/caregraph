@@ -1,5 +1,3 @@
-The file write requires your permission. Here's the methodology page content I've prepared:
-
 ## Overview
 
 The CDC Social Determinants of Health (SDOH) dataset compiles county-level indicators drawn from the American Community Survey (ACS), Census Bureau, USDA, and other federal sources. It is published by the Centers for Disease Control and Prevention as part of the Agency for Healthcare Research and Quality (AHRQ) SDOH Database, accessible via data.cdc.gov (Socrata resource `i6u4-y3g4`). The indicator selection follows the CDC's Healthy People 2030 framework, covering five domains: economic stability, education and connectivity, healthcare access, neighborhood and built environment, and social and community context. Most measures use ACS 5-year estimates (currently 2017-2021), which smooth annual volatility but introduce a multi-year reporting lag.
@@ -28,5 +26,3 @@ The source data has one row per measure per county. The ETL classifies each row 
 - **Non-UTF-8 byte handling.** The source CSV is loaded with `encoding="utf-8", errors="replace"`, substituting Unicode replacement characters (`U+FFFD`) for any non-UTF-8 bytes. This prevents ETL failures but may introduce replacement characters in county or measure name strings in rare cases.
 
 ---
-
-Please approve the file write to save this to `etl/editorial/output/cdc-sdoh.md`.

@@ -1,5 +1,3 @@
-Good, I have the style reference. Now let me write the methodology page for the Part D drug spending dataset.
-
 ## Overview
 
 The Medicare Part D Spending by Drug dataset is published by CMS on data.cms.gov as part of the Medicare Drug Spending dashboard. It reports total spending, claim counts, beneficiary counts, cost-per-dosage-unit, and year-over-year spending changes for drugs covered under Medicare Part D â€” the outpatient and retail prescription drug benefit. Each row represents one drug, identified by brand name and generic name. The current file contains 1,938 drug records. The dataset does not include drugs administered by physicians and billed under Medicare Part B (e.g., infused chemotherapy, injectable biologics).

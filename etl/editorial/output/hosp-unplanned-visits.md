@@ -1,5 +1,3 @@
-The file write was denied. Here is the methodology page content:
-
 ## Overview
 
 The Unplanned Hospital Visits â€” Hospital dataset is published by the Centers for Medicare & Medicaid Services (CMS) as part of the Hospital Compare program, now integrated into the Care Compare initiative on data.cms.gov (Provider Data API identifier `632h-zaca`). It contains hospital-level measures for unplanned return visits following outpatient procedures, including ED visits after hospital outpatient surgery (OP-36) and unplanned readmissions after outpatient procedures. Each row represents one measure for one hospital, with fields for the observed rate, national comparison category, number of patients, and measure start/end dates. The current file covers FY2026, using a measurement window of approximately 3 years ending in 2022.

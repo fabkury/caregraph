@@ -1,5 +1,3 @@
-The file write was denied twice. Here is the methodology page content â€” you can save it manually:
-
 ## Overview
 
 The Medicare Part B Discarded Drug Units dataset is published by CMS on data.cms.gov as part of the Medicare Drug Spending dashboard. It reports waste from single-dose vials of physician-administered drugs covered under Medicare Part B, quantified by Medicare allowed amounts, discarded amounts, and the percentage of billing units discarded per HCPCS code. Each row represents one drug identified by HCPCS code, brand name, and generic name. The current file covers the CY2023 reporting year.

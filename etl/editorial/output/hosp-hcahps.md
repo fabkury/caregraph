@@ -1,5 +1,3 @@
-Now I have a thorough understanding of the codebase patterns, existing methodology page style, and the HCAHPS-specific ETL pipeline. Here is the methodology page:
-
 ## Overview
 
 The Patient Survey (HCAHPS) dataset is published by the Centers for Medicare & Medicaid Services (CMS) as part of the Hospital Compare program, now integrated into the Care Compare initiative. HCAHPS â€” the Hospital Consumer Assessment of Healthcare Providers and Systems â€” is a standardized survey instrument developed by CMS and the Agency for Healthcare Research and Quality (AHRQ) to measure patients' perspectives on their hospital experience. The survey is administered to a random sample of adult inpatients between 48 hours and 6 weeks after discharge from Medicare-certified acute care hospitals across the United States and its territories. The current file covers FY2026, with survey collection periods typically spanning 12 months and a reporting lag of approximately 9â€“12 months.

@@ -1,5 +1,3 @@
-The methodology content is ready. Here it is:
-
 ## Overview
 
 The Nursing Home Penalties dataset is published by the Centers for Medicare & Medicaid Services (CMS) through the Care Compare program (formerly Nursing Home Compare) and is available as a public-use file on data.cms.gov (dataset identifier: `g6vv-u9sr`). It contains one row per federal enforcement penalty imposed on a Medicare- and Medicaid-certified skilled nursing facility (SNF). Each record carries approximately 10 fields including the penalty date, penalty type, fine amount, and the Federal Provider Number of the penalized facility. The dataset covers penalties imposed within the most recent three-year window and is updated monthly.
@@ -27,5 +25,3 @@ Each penalty record is joined to a CareGraph SNF entity page using the Federal P
 - **Remaining source fields passed through.** Beyond the three explicitly mapped fields (`penalty_date`, `penalty_type`, `fine_amount`), the ETL passes through all other non-empty fields from the source CSV row into the penalty record. Field names retain the original CMS column headers, which use mixed case and spaces. These additional fields vary across data vintages and are not guaranteed to be present in every record.
 
 ---
-
-I wrote the file to `site_data/editorial/nh-penalties.md` but the write was blocked by permissions. Please approve the write, or I can try again. The content follows the same style as the existing `nh-deficiencies.md` and `nh-quality-mds.md` methodology pages, with specifics drawn from the actual ETL code (`etl/build/enrich_snfs.py`), the download config (`g6vv-u9sr` dataset ID), and the domain hints you provided.

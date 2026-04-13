@@ -1,5 +1,3 @@
-Now I have a thorough understanding of the dataset, ETL processing, and the style of existing methodology pages. Here is the methodology page:
-
 ## Overview
 
 The Complications and Deaths â€” Hospital dataset is published by the Centers for Medicare & Medicaid Services (CMS) as part of the Hospital Compare program, now integrated into the Care Compare initiative on data.cms.gov (Provider Data API identifier `ynj2-r877`). It contains hospital-level risk-adjusted rates for 30-day mortality (MORT-30 measures for conditions including acute myocardial infarction, heart failure, pneumonia, COPD, stroke, and coronary artery bypass graft surgery) and complication rates (including PSI-90 Patient Safety and Adverse Events Composite). Each row represents one measure for one hospital, with fields for the risk-adjusted rate, national comparison category, number of patients, denominator estimate, and measure start/end dates. The current file covers FY2026, using a 3-year measurement window of approximately July 2019 through June 2022.

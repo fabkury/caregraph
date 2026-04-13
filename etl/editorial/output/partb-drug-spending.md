@@ -1,7 +1,3 @@
-Here is the methodology page for the Medicare Part B Spending by Drug dataset:
-
----
-
 ## Overview
 
 The Medicare Part B Spending by Drug dataset is published by CMS on data.cms.gov as part of the Medicare Drug Spending dashboard. It reports total spending, claim counts, and per-dosage-unit costs for drugs covered under Medicare Part B â€” the physician-administered drug benefit. Part B covers drugs that are infused, injected, or inhaled in physician offices and hospital outpatient departments, billed under HCPCS J-codes and Q-codes. Oral and self-administered drugs are excluded from Part B and instead fall under Part D. Each row represents one drug identified by HCPCS code, brand name, and generic name. The current file covers the 2023 reporting year.
@@ -29,5 +25,3 @@ This dataset joins to drug entity pages on CareGraph using the generic name fiel
 - **Part B entity coverage is a subset of drug entity pages.** Drug entity pages are generated from the Part D dataset as the primary entity list. Part B data is attached only when a matching generic name exists in Part D. Drugs billed exclusively under Part B (with no Part D counterpart) do not have entity pages on CareGraph.
 
 ---
-
-The write to `etl/editorial/output/partb-drug-spending.md` was blocked by permissions. Would you like to approve the write, or would you prefer to copy the content above manually?

@@ -1,5 +1,3 @@
-Now I have a thorough understanding of the dataset, the ETL code, and the style of existing methodology pages. Let me write the methodology page.
-
 ## Overview
 
 The Nursing Home Ownership dataset is published by the Centers for Medicare & Medicaid Services (CMS) through the Care Compare program (formerly Nursing Home Compare) and is available as a public-use file on data.cms.gov (dataset identifier: `y2hd-n93e`). It contains one row per ownership record for Medicare- and Medicaid-certified skilled nursing facilities (SNFs) in the United States and its territories, with approximately 10 fields per record including owner name, owner type, and ownership percentage. Because each facility can have multiple owners, the dataset contains multiple rows per facility â€” reflecting the legal entity, managing entity, and all individuals or organizations holding 5% or more ownership interest as reported on CMS Form 855A (Medicare enrollment application). The dataset reflects current ownership status at the time of publication.

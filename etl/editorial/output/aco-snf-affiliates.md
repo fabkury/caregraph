@@ -1,5 +1,3 @@
-Here is the methodology page:
-
 ## Overview
 
 The ACO SNF Affiliates dataset is published by the Centers for Medicare & Medicaid Services (CMS) as a public-use file under the Medicare Shared Savings Program (MSSP). It identifies skilled nursing facilities (SNFs) that have entered into a preferred affiliation with an MSSP ACO under the 3-day SNF waiver program. Under this waiver, Medicare fee-for-service beneficiaries assigned to the ACO may be admitted directly to an affiliated SNF without the standard requirement of a qualifying 3-day prior inpatient hospital stay. Each row represents one ACO-to-SNF affiliation, with approximately 6 fields per record including the ACO identifier, the SNF's CMS Certification Number (CCN), the SNF name, and state. The source file is hosted on data.cms.gov and is downloaded during the CareGraph ETL pipeline via the CMS Data API.
@@ -27,5 +25,3 @@ Each record joins to an ACO entity page using the `ACO_ID` field, a character st
 - **No deduplication.** The ETL collects all rows matching a given ACO ID without deduplication. If the source data contains duplicate affiliation rows for the same ACO-SNF pair, both appear in the `snf_affiliates` array on the manifest.
 
 ---
-
-The file write was blocked by permissions. Would you like to approve writing this to `etl/editorial/output/aco-snf-affiliates.md`?

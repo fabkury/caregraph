@@ -1,5 +1,3 @@
-Now I have a thorough understanding of the dataset, ETL processing, hints, and the style conventions of existing methodology pages. Here's the methodology page:
-
 ## Overview
 
 The Healthcare Associated Infections â€” Hospital (HAI) dataset is published by the Centers for Disease Control and Prevention (CDC) through the National Healthcare Safety Network (NHSN), and distributed via the CMS Care Compare initiative on data.cms.gov (Provider Data API identifier `77hc-ibv8`). Unlike most CMS quality datasets, HAI data is not derived from claims â€” hospitals report infections directly to the NHSN as part of CMS Inpatient Quality Reporting (IQR) program requirements. The data uses clinical surveillance definitions rather than billing codes. Each row represents one infection measure for one hospital, with fields for observed infections, predicted infections, the Standardized Infection Ratio (SIR), SIR confidence intervals, and the comparison category against the national benchmark. The current file covers FY2026.

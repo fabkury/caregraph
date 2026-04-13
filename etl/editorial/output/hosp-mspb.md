@@ -1,5 +1,3 @@
-Now I have everything I need. Let me write the methodology page.
-
 ## Overview
 
 The Medicare Spending Per Beneficiary (MSPB) â€” Hospital dataset is published by CMS as part of the Hospital Compare provider data files on data.cms.gov (dataset identifier `5hk7-b79m`). It contains hospital-level spending data for the MSPB measure, which captures total Medicare Part A and Part B spending for episodes of care spanning 3 days prior to an index hospital admission through 30 days after discharge. This spending window encompasses inpatient costs, post-acute care (skilled nursing facility stays, home health services, inpatient rehabilitation), and all outpatient services billed by any provider during the episode â€” not just the admitting hospital. The current file covers the FY2026 reporting period.
