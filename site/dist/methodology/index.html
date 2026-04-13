@@ -1,0 +1,54 @@
+<!DOCTYPE html><html lang="en"> <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="description" content="How CareGraph processes, validates, and presents CMS and CDC public data."><title>Methodology | CareGraph</title><link rel="icon" type="image/svg+xml" href="/favicon.svg"><link rel="stylesheet" href="/_astro/about.DK3N7Jig.css"></head> <body> <a href="#main-content" class="skip-link">Skip to main content</a> <nav class="nav" role="navigation" aria-label="Main navigation"> <div class="nav-inner"> <a href="/" class="nav-logo">CareGraph</a> <div class="nav-links"> <a href="/">Home</a> <a href="#">Explore</a> <a href="/map/">Maps</a> <a href="/compare/">Compare</a> <a href="/methodology/">Methodology</a> <a href="/workspace/">Workspace</a> <a href="/about/">About</a> </div> <div class="nav-search" role="search" aria-label="Search"> <input type="text" id="nav-search-input" placeholder="Search..." aria-label="Search CareGraph"> </div> </div> </nav> <main class="main" role="main" id="main-content">  <div class="page-header"> <h1>Methodology</h1> <p class="subtitle">How CareGraph processes, validates, and presents public healthcare data.</p> </div> <div class="card"> <h2>Our Approach: Trust-First Design</h2> <p>
+CareGraph exists because public healthcare data should be publicly accessible — not locked
+      behind vendor portals, paywalls, or impenetrable government websites. Every number on this
+      site comes from an official CMS or CDC dataset. We do not model, predict, or editorialize
+      the data; we clean it, connect it, and present it with full provenance.
+</p> <p>
+Trust-first design means three things:
+</p> <ul> <li> <strong>Provenance on every page.</strong> Every entity page shows exactly which dataset
+        produced each number, when it was downloaded, and how many rows were in the source file.
+</li> <li> <strong>Limitations up front.</strong> We document known caveats, suppression rules, and
+        coverage gaps for every dataset — not buried in footnotes, but in dedicated methodology
+        pages linked from every entity page.
+</li> <li> <strong>Reproducible pipeline.</strong> The entire ETL pipeline is open source. Anyone can
+        re-run it, verify the outputs, and file an
+<a href="https://github.com/fabkury/caregraph/issues/new?template=error_report.md">error report</a>
+if something looks wrong.
+</li> </ul> </div> <div class="card"> <h2>Datasets</h2> <p>
+CareGraph ingests 8 datasets from CMS and CDC. Each dataset has a dedicated
+      methodology page describing its contents, join strategy, limitations, and data quality notes.
+</p> <div style="overflow-x: auto;"> <table class="data-table"> <thead> <tr> <th>Dataset</th> <th>Entity Type</th> <th>Vintage</th> <th>Entity Count</th> <th>Methodology</th> </tr> </thead> <tbody> <tr> <td style="font-weight: 500;">Hospital General Information</td> <td><span class="badge badge-hospital">hospital</span></td> <td>FY2026</td> <td>5,426</td> <td> <a href="/methodology/dataset/xubh-q36u/">View details</a> </td> </tr><tr> <td style="font-weight: 500;">Hospital Readmissions Reduction Program</td> <td><span class="badge badge-hospital">hospital</span></td> <td>FY2026</td> <td>5,311</td> <td> <a href="/methodology/dataset/hrrp/">View details</a> </td> </tr><tr> <td style="font-weight: 500;">Hospital Value-Based Purchasing TPS</td> <td><span class="badge badge-hospital">hospital</span></td> <td>FY2026</td> <td>5,311</td> <td> <a href="/methodology/dataset/hvbp-tps/">View details</a> </td> </tr><tr> <td style="font-weight: 500;">Nursing Home Provider Info</td> <td><span class="badge badge-snf">snf</span></td> <td>Mar 2026</td> <td>14,703</td> <td> <a href="/methodology/dataset/nh-provider-info/">View details</a> </td> </tr><tr> <td style="font-weight: 500;">SNF Quality Measures (MDS)</td> <td><span class="badge badge-snf">snf</span></td> <td>Mar 2026</td> <td>—</td> <td> <a href="/methodology/dataset/nh-quality-mds/">View details</a> </td> </tr><tr> <td style="font-weight: 500;">MSSP ACO Performance PY2024</td> <td><span class="badge badge-aco">aco</span></td> <td>PY2024</td> <td>476</td> <td> <a href="/methodology/dataset/mssp-performance/">View details</a> </td> </tr><tr> <td style="font-weight: 500;">Medicare Geographic Variation by County</td> <td><span class="badge badge-county">county</span></td> <td>2014-2023</td> <td>3,198</td> <td> <a href="/methodology/dataset/geo-var-county/">View details</a> </td> </tr><tr> <td style="font-weight: 500;">CDC PLACES County-Level Data</td> <td><span class="badge badge-county">county</span></td> <td>2023 Release</td> <td>40</td> <td> <a href="/methodology/dataset/cdc-places/">View details</a> </td> </tr> </tbody> </table> </div> </div> <div class="card" id="limitations-ledger"> <h2>Limitations Ledger</h2> <p>
+Across all datasets, the following systemic limitations apply:
+</p> <ul> <li> <strong>Medicare FFS only.</strong> Most CMS datasets cover Medicare fee-for-service
+        beneficiaries. Medicare Advantage enrollees (over 50% of Medicare beneficiaries as of 2024)
+        are generally excluded. This is not a sampling choice — MA plans are not required to report
+        claims-level data to CMS in the same way FFS does.
+</li> <li> <strong>Reporting lag.</strong> CMS data typically reflects a measurement period 12-24
+        months prior to the data release date. Quality metrics like star ratings, readmission
+        ratios, and VBP scores use multi-year measurement windows that lag even further.
+</li> <li> <strong>Cell-size suppression.</strong> To protect patient privacy, CMS suppresses values
+        when the underlying count is fewer than 11 (sometimes 25 for specific programs). This
+        disproportionately affects rural providers and small counties.
+</li> <li> <strong>Facility vs. system.</strong> CMS data is organized by individual facility CCN, not
+        by health system. A hospital system operating 15 facilities appears as 15 separate entities.
+        System-level aggregation is not currently supported in CareGraph.
+</li> <li> <strong>Model-based estimates.</strong> CDC PLACES county-level prevalence estimates are
+        model-derived (MRP from BRFSS), not direct measurements. Confidence intervals should be
+        consulted, especially for small-population counties.
+</li> </ul> </div> <div class="card"> <h2>ETL Pipeline</h2> <p>
+The CareGraph ETL (Extract, Transform, Load) pipeline runs as a single Python script that:
+</p> <ol> <li>Downloads raw CSV files from data.cms.gov and data.cdc.gov APIs</li> <li>Builds base entity manifests (one JSON file per hospital, county, SNF, or ACO)</li> <li>Enriches entities with data from supplementary datasets (HRRP, HVBP, CDC PLACES)</li> <li>Builds cross-links between related entities (hospitals in counties, SNFs near hospitals)</li> <li>Generates a search index for the site-wide search feature</li> <li>Writes a manifest index (<code>site_data/index.json</code>) with pipeline metadata</li> </ol> <p>
+The pipeline is idempotent: re-running it on the same day skips already-downloaded files.
+      All source data is stored with content-addressable filenames
+      (<code>{dataset_id}_{date}.csv</code>) to enable reproducibility.
+</p> </div> <div class="card"> <h2>Report an Error</h2> <p>
+If you find incorrect data, a missing entity, or a methodology concern, please
+<a href="https://github.com/fabkury/caregraph/issues/new?template=error_report.md">
+file an error report
+</a>
+on GitHub. We review every report and publish corrections with full changelog entries.
+</p> </div>  </main> <script type="module">const e=document.getElementById("nav-search-input");e&&e.addEventListener("keydown",t=>{if(t.key==="Enter"){const n=e.value.trim();n&&(window.location.href=`/search?q=${encodeURIComponent(n)}`)}});</script> <footer class="footer" role="contentinfo"> <div class="footer-inner"> <div>
+MIT License. Free. No ads. No login.
+</div> <div> <a href="https://github.com/fabkury/caregraph" target="_blank" rel="noopener">GitHub</a>
+&middot;
+<a href="https://github.com/fabkury/caregraph/issues/new?template=error_report.md" target="_blank" rel="noopener">Report an error</a> </div> </div> </footer> </body></html>

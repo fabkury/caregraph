@@ -9,14 +9,14 @@ CareGraph is a free, open-source, ad-free website that unifies 100+ publicly ava
 
 ## How it works
 
-All heavy lifting runs offline via a manual ETL on the maintainer's workstation. The VPS serves only static files. The browser renders precomputed JSON manifests through a lightweight data grid.
+All heavy lifting runs offline via a manual ETL on the maintainer's workstation. The site is static HTML served by GitHub Pages. The browser renders precomputed JSON manifests through a lightweight data grid.
 
 ```
 ETL (Python + DuckDB)  -->  site_data/ (JSON manifests)
                                |
                          Astro build  -->  site/dist/ (static HTML)
                                |
-                         rsync + atomic swap  -->  caregraph.org
+                         git push  -->  GitHub Pages  -->  caregraph.org
 ```
 
 ## Current scope (v1 starting subset)
@@ -38,8 +38,8 @@ python etl/run.py
 # 3. Build the static site
 cd site && npm install && npm run build
 
-# 4. Deploy (requires .env.deploy config)
-bash deploy/deploy.sh
+# 4. Deploy (commit site/dist/ and push to main)
+git add site/dist/ && git commit -m "Rebuild site" && git push
 ```
 
 ## Full specification
@@ -48,7 +48,7 @@ See [docs/cms-unified-vbc-tool-spec.md](docs/cms-unified-vbc-tool-spec.md) for t
 
 ## How to cite
 
-> CareGraph. (2026). *CareGraph: Unified CMS data exploration tool.* https://caregraph.org. Source code: https://github.com/caregraph/caregraph.
+> CareGraph. (2026). *CareGraph: Unified CMS data exploration tool.* https://caregraph.org. Source code: https://github.com/fabkury/caregraph.
 
 ## License
 

@@ -30,6 +30,16 @@ const partdMetrics = manifest.data?.partd_spending?.metrics || {};
 const partdRaw = manifest.data?.partd_spending?.raw || {};
 const partbSpending = manifest.data?.partb_spending;
 const discardedUnits = manifest.data?.discarded_units;
+const nadac = manifest.data?.nadac || null;
+
+// NADAC-derived pricing fields
+const nadacPerUnit = nadac?.nadac_per_unit ?? null;
+const partdCostPerUnit = partdMetrics.avg_spend_per_dosage_unit?.value ?? null;
+const markupRatio = (nadacPerUnit != null && nadacPerUnit > 0 && partdCostPerUnit != null)
+  ? partdCostPerUnit / nadacPerUnit
+  : null;
+const nadacClassification = nadac?.classification || null;
+const nadacOtc = nadac?.otc_indicator || false;
 
 function formatDollar(val: number | null): string {
   if (val == null) return '\u2014';
@@ -254,7 +264,61 @@ function badgeClass(type: string): string {
       </div>
     )}
 
-    {Object.keys(partdMetrics).length === 0 && (
+    {nadac && (
+      <div class="card" id="drug-pricing">
+        <h2>Drug Pricing Transparency</h2>
+
+        <div style="display: flex; gap: 0.5rem; align-items: center; margin-bottom: 1rem; flex-wrap: wrap;">
+          {nadacClassification && (
+            <span class={`badge ${nadacClassification.toLowerCase() === 'generic' ? 'badge-county' : 'badge-drug'}`}>
+              {nadacClassification}
+            </span>
+          )}
+          {nadacOtc && (
+            <span class="badge" style="background: #f3f4f6; color: #374151;">OTC</span>
+          )}
+        </div>
+
+        <div class="metric-grid">
+          {nadacPerUnit != null && (
+            <div class="metric-card">
+              <div class="label">Pharmacy Acquisition Cost (NADAC)</div>
+              <div class="value">{formatDollar(nadacPerUnit)} <span style="font-size: 0.75rem; color: var(--color-text-muted);">per unit</span></div>
+            </div>
+          )}
+          {partdCostPerUnit != null && (
+            <div class="metric-card">
+              <div class="label">Medicare Part D Cost per Unit</div>
+              <div class="value">{formatDollar(partdCostPerUnit)} <span style="font-size: 0.75rem; color: var(--color-text-muted);">per unit</span></div>
+            </div>
+          )}
+          {markupRatio != null && (
+            <div class="metric-card">
+              <div class="label">Markup Ratio (Part D / NADAC)</div>
+              <div class="value" style={`color: ${markupRatio > 2.0 ? '#dc2626' : markupRatio > 1.5 ? '#d97706' : '#059669'}`}>
+                {markupRatio.toFixed(2)}x
+              </div>
+            </div>
+          )}
+        </div>
+
+        {markupRatio != null && (
+          <p style="font-size: 0.85rem; color: var(--color-text-muted); margin-top: 0.75rem;">
+            {markupRatio > 2.0
+              ? 'Medicare Part D pays significantly more than the pharmacy acquisition cost for this drug, suggesting substantial markup through the supply chain.'
+              : markupRatio > 1.5
+                ? 'Medicare Part D cost is moderately above pharmacy acquisition cost, reflecting typical distribution and dispensing margins.'
+                : 'Medicare Part D cost is close to pharmacy acquisition cost, indicating a competitive pricing environment.'}
+          </p>
+        )}
+
+        <p style="font-size: 0.75rem; color: var(--color-text-muted); margin-top: 0.5rem;">
+          NADAC = National Average Drug Acquisition Cost, reflecting what pharmacies pay wholesalers. Source: CMS NADAC ({nadac.effective_date || 'latest'}).
+        </p>
+      </div>
+    )}
+
+    {Object.keys(partdMetrics).length === 0 && !nadac && (
       <div class="card">
         <p style="color: var(--color-text-muted);">
           No spending metrics available for this drug.

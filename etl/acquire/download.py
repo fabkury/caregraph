@@ -190,6 +190,56 @@ DATASETS: dict[str, dict] = {
         "csv_url": "https://data.cms.gov/sites/default/files/2025-05/ca1c9013-8c7c-4560-a4a1-28cf7e43ccc8/MUP_INP_RY25_P03_V10_DY23_PrvSvc.CSV",
         "api_url": "https://data.cms.gov/data-api/v1/dataset/690ddc6c-2767-4618-b277-420ffb2bf27c/data",
     },
+    # ── Tier A enrichment datasets ─────────────────────────────────
+    "hosp-cost-report": {
+        "name": "Hospital Provider Cost Report",
+        "entity": "hospital",
+        "api_type": "data-api",
+        "csv_url": "https://data.cms.gov/sites/default/files/2026-01/3c39f483-c7e0-4025-8396-4df76942e10f/CostReport_2023_Final.csv",
+        "api_url": None,
+    },
+    "snf-cost-report": {
+        "name": "Skilled Nursing Facility Cost Report",
+        "entity": "snf",
+        "api_type": "data-api",
+        "csv_url": "https://data.cms.gov/sites/default/files/2025-11/34ea98e4-20f4-42f7-b5b2-616d35b0fe93/CostReportsnf_Final_23.csv",
+        "api_url": None,
+    },
+    "hac-reduction": {
+        "name": "Hospital-Acquired Condition (HAC) Reduction Program",
+        "entity": "hospital",
+        "api_type": "provider-data",
+        "csv_url": None,
+        "api_url": "https://data.cms.gov/provider-data/api/1/datastore/query/yq43-i98g/0",
+    },
+    "aco-bene-county": {
+        "name": "ACO Assigned Beneficiaries by County",
+        "entity": "aco",
+        "api_type": "data-api",
+        "csv_url": "https://data.cms.gov/sites/default/files/2024-11/8a74dd30-06a1-4751-beee-dc0dd3c9d609/Number_Of_ACO_Assigned_Beneficiaries_by_County_PUF_2023_01_01.csv",
+        "api_url": None,
+    },
+    "cdc-sdoh": {
+        "name": "CDC SDOH Measures for County",
+        "entity": "county",
+        "api_type": "soda",
+        "csv_url": None,
+        "api_url": "https://data.cdc.gov/resource/i6u4-y3g4.csv",
+    },
+    "cms-chronic-conditions": {
+        "name": "Medicare Specific Chronic Conditions by County",
+        "entity": "county",
+        "api_type": "data-api",
+        "csv_url": None,
+        "api_url": "https://data.cms.gov/data-api/v1/dataset/efaa78b6-71af-4e1e-b52a-93ed3a1e1cb4/data",
+    },
+    "nadac": {
+        "name": "NADAC National Average Drug Acquisition Cost",
+        "entity": "drug",
+        "api_type": "provider-data",
+        "csv_url": None,
+        "api_url": "https://data.medicaid.gov/api/1/datastore/query/fbb83258-11c7-47f5-8b18-5f8e79f7e704/0",
+    },
 }
 
 # Page sizes for paginated API fallbacks

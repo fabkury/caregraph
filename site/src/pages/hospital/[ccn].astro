@@ -48,6 +48,16 @@ const hcahps = manifest.data?.hcahps || null;
 const hai = manifest.data?.hai || null;
 const unplannedVisits = manifest.data?.unplanned_visits || null;
 const mspb = manifest.data?.mspb || null;
+const hacData = manifest.data?.hac_reduction || null;
+const costReport = manifest.data?.cost_report || null;
+
+// Derived flags for Payment Programs card
+const hrrpPenalized = readmissions ? Object.values(readmissions).some((d: any) => d.excess_readmission_ratio > 1) : false;
+const vbpData = vbp;
+const vbpTps = vbp?.total_performance_score;
+const vbpPositive = vbpTps != null ? vbpTps >= 50 : false;
+const hacReduced = hacData?.payment_reduction === true || hacData?.payment_reduced === true;
+
 const related = manifest.related || [];
 
 // Friendly measure names for HRRP
@@ -392,6 +402,145 @@ function badgeClass(type: string): string {
         </div>
         <p style="font-size: 0.8rem; color: var(--color-text-muted); margin-top: 0.5rem;">
           MSPB ratio: values &gt; 1.0 mean higher spending than the national median hospital. Source: CMS MSPB.
+        </p>
+      </div>
+    )}
+
+    {(hacData || readmissions || vbpData) && (
+      <div class="card" id="payment-programs">
+        <h2>CMS Payment Programs</h2>
+        <p class="section-help">Three Medicare programs adjust hospital payments based on performance. Hospitals can be penalized under multiple programs simultaneously.</p>
+
+        <div class="metric-grid" style="grid-template-columns: repeat(3, 1fr);">
+          <div class="metric-card" style={`border-left: 4px solid ${hrrpPenalized ? '#dc2626' : '#059669'}`}>
+            <div class="label">Readmissions (HRRP)</div>
+            <div class="value" style={`color: ${hrrpPenalized ? '#dc2626' : '#059669'}`}>
+              {hrrpPenalized ? 'Penalized' : 'Not Penalized'}
+            </div>
+          </div>
+          <div class="metric-card" style={`border-left: 4px solid ${vbpPositive ? '#059669' : '#dc2626'}`}>
+            <div class="label">Value-Based Purchasing</div>
+            <div class="value" style={`color: ${vbpPositive ? '#059669' : '#dc2626'}`}>
+              {vbpTps ? vbpTps + ' TPS' : '\u2014'}
+            </div>
+          </div>
+          <div class="metric-card" style={`border-left: 4px solid ${hacReduced ? '#dc2626' : '#059669'}`}>
+            <div class="label">HAC Reduction</div>
+            <div class="value" style={`color: ${hacReduced ? '#dc2626' : '#059669'}`}>
+              {hacReduced ? 'Payment Reduced' : 'No Reduction'}
+            </div>
+          </div>
+        </div>
+
+        {hacData && (
+          <div style="margin-top: 1rem;">
+            <h3 style="font-size: 1rem; margin-bottom: 0.5rem;">HAC Component Scores</h3>
+            <p style="font-size: 0.8rem; color: var(--color-text-muted); margin-bottom: 0.5rem;">
+              SIR &lt; 1.0 = fewer infections than expected (better). Lower Total HAC Score = better.
+            </p>
+            <table class="data-table">
+              <thead><tr><th>Measure</th><th style="text-align:right">SIR</th><th style="text-align:right">Z-Score</th></tr></thead>
+              <tbody>
+                {hacData.measures && hacData.measures.map((m: any) => (
+                  <tr>
+                    <td style="font-weight: 500;">{m.measure_name || m.measure_id || '\u2014'}</td>
+                    <td style={`text-align:right; color: ${m.sir != null && m.sir < 0.8 ? '#059669' : m.sir != null && m.sir > 1.2 ? '#dc2626' : 'inherit'}`}>
+                      {m.sir != null ? m.sir.toFixed(3) : '\u2014'}
+                    </td>
+                    <td style="text-align:right">{m.z_score != null ? m.z_score.toFixed(3) : '\u2014'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <div class="metric-grid" style="margin-top: 0.75rem; grid-template-columns: 1fr;">
+              <div class="metric-card">
+                <div class="label">Total HAC Score (lower is better)</div>
+                <div class="value">{hacData.total_hac_score?.toFixed(4)}</div>
+              </div>
+            </div>
+          </div>
+        )}
+        <p style="font-size: 0.75rem; color: var(--color-text-muted); margin-top: 0.5rem;">
+          Source: CMS HRRP, HVBP, HAC Reduction Program (FY {hacData?.fiscal_year || '2026'}).
+        </p>
+      </div>
+    )}
+
+    {costReport && (
+      <div class="card" id="financial-health">
+        <h2>Financial Health <span style="font-size: 0.85rem; color: var(--color-text-muted); font-weight: 400;">(FY {costReport.fiscal_year} Cost Report)</span></h2>
+
+        <div class="metric-grid">
+          {costReport.operating_margin != null && (
+            <div class="metric-card">
+              <div class="label">Operating Margin</div>
+              <div class="value" style={`color: ${costReport.operating_margin >= 0 ? '#059669' : '#dc2626'}`}>
+                {costReport.operating_margin.toFixed(1) + '%'}
+              </div>
+            </div>
+          )}
+          {costReport.occupancy_rate != null && (
+            <div class="metric-card">
+              <div class="label">Occupancy Rate</div>
+              <div class="value">{costReport.occupancy_rate.toFixed(1) + '%'}</div>
+            </div>
+          )}
+          {costReport.cost_per_discharge != null && (
+            <div class="metric-card">
+              <div class="label">Cost per Discharge</div>
+              <div class="value">{'$' + Math.round(costReport.cost_per_discharge).toLocaleString()}</div>
+            </div>
+          )}
+          {costReport.current_ratio != null && (
+            <div class="metric-card">
+              <div class="label">Current Ratio</div>
+              <div class="value">{costReport.current_ratio.toFixed(2)}</div>
+            </div>
+          )}
+          {costReport.uncompensated_care_pct != null && (
+            <div class="metric-card">
+              <div class="label">Uncompensated Care %</div>
+              <div class="value">{costReport.uncompensated_care_pct.toFixed(1) + '%'}</div>
+            </div>
+          )}
+          {costReport.medicare_day_share != null && (
+            <div class="metric-card">
+              <div class="label">Medicare Day Share %</div>
+              <div class="value">{costReport.medicare_day_share.toFixed(1) + '%'}</div>
+            </div>
+          )}
+        </div>
+
+        <h3 style="font-size: 1rem; margin: 1rem 0 0.5rem;">Revenue & Costs</h3>
+        <table class="kv-table">
+          <tbody>
+            {costReport.net_patient_revenue != null && (
+              <tr><td>Net Patient Revenue</td><td>{'$' + Math.round(costReport.net_patient_revenue).toLocaleString()}</td></tr>
+            )}
+            {costReport.total_costs != null && (
+              <tr><td>Total Costs</td><td>{'$' + Math.round(costReport.total_costs).toLocaleString()}</td></tr>
+            )}
+            {costReport.net_income != null && (
+              <tr>
+                <td>Net Income</td>
+                <td style={`color: ${costReport.net_income >= 0 ? '#059669' : '#dc2626'}`}>
+                  {'$' + Math.round(costReport.net_income).toLocaleString()}
+                </td>
+              </tr>
+            )}
+            {costReport.total_assets != null && (
+              <tr><td>Total Assets</td><td>{'$' + Math.round(costReport.total_assets).toLocaleString()}</td></tr>
+            )}
+            {costReport.total_liabilities != null && (
+              <tr><td>Total Liabilities</td><td>{'$' + Math.round(costReport.total_liabilities).toLocaleString()}</td></tr>
+            )}
+            {costReport.fund_balance != null && (
+              <tr><td>Fund Balance</td><td>{'$' + Math.round(costReport.fund_balance).toLocaleString()}</td></tr>
+            )}
+          </tbody>
+        </table>
+        <p style="font-size: 0.75rem; color: var(--color-text-muted); margin-top: 0.5rem;">
+          Source: CMS Hospital Cost Report (FY {costReport.fiscal_year}).
         </p>
       </div>
     )}

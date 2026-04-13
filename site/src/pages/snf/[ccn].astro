@@ -54,6 +54,12 @@ const provenance = manifest.provenance?.[0];
 const penalties = manifest.data?.penalties || null;
 const deficiencies = manifest.data?.deficiencies || null;
 const ownership = manifest.data?.ownership || null;
+const costReport = manifest.data?.cost_report || null;
+
+// Payer mix percentages
+const medicarePct = costReport?.medicare_pct ?? null;
+const medicaidPct = costReport?.medicaid_pct ?? null;
+const otherPct = (medicarePct != null && medicaidPct != null) ? Math.max(0, 100 - medicarePct - medicaidPct) : null;
 
 // Related entities
 const related = manifest.related || [];
@@ -235,6 +241,59 @@ function badgeClass(type: string): string {
         </div>
         <p style="font-size: 0.8rem; color: var(--color-text-muted); margin-top: 0.5rem;">
           Corporate ownership chain. Source: CMS Nursing Home Ownership.
+        </p>
+      </div>
+    )}
+
+    {costReport && (
+      <div class="card" id="financial-health">
+        <h2>Financial Health <span style="font-size: 0.85rem; color: var(--color-text-muted); font-weight: 400;">(FY {costReport.fiscal_year} Cost Report)</span></h2>
+
+        {medicarePct != null && medicaidPct != null && (
+          <div style="margin-bottom: 1rem;">
+            <h3 style="font-size: 1rem; margin-bottom: 0.5rem;">Payer Mix</h3>
+            <div class="demo-bar-track" style="height: 1.5rem; display: flex; border-radius: 6px; overflow: hidden;">
+              <div class="demo-bar-fill" style={`width: ${medicarePct}%; background: #2563eb;`} title={`Medicare: ${medicarePct.toFixed(1)}%`}></div>
+              <div class="demo-bar-fill" style={`width: ${medicaidPct}%; background: #7c3aed;`} title={`Medicaid: ${medicaidPct.toFixed(1)}%`}></div>
+              {otherPct != null && otherPct > 0 && (
+                <div class="demo-bar-fill" style={`width: ${otherPct.toFixed(1)}%; background: #9ca3af;`} title={`Other: ${otherPct.toFixed(1)}%`}></div>
+              )}
+            </div>
+            <div style="display: flex; gap: 1rem; margin-top: 0.4rem; font-size: 0.8rem;">
+              <span><span style="display:inline-block;width:10px;height:10px;background:#2563eb;border-radius:2px;margin-right:4px;"></span>Medicare {medicarePct.toFixed(1)}%</span>
+              <span><span style="display:inline-block;width:10px;height:10px;background:#7c3aed;border-radius:2px;margin-right:4px;"></span>Medicaid {medicaidPct.toFixed(1)}%</span>
+              {otherPct != null && otherPct > 0 && (
+                <span><span style="display:inline-block;width:10px;height:10px;background:#9ca3af;border-radius:2px;margin-right:4px;"></span>Other {otherPct.toFixed(1)}%</span>
+              )}
+            </div>
+          </div>
+        )}
+
+        <div class="metric-grid">
+          {costReport.operating_margin != null && (
+            <div class="metric-card">
+              <div class="label">Operating Margin</div>
+              <div class="value" style={`color: ${costReport.operating_margin >= 0 ? '#059669' : '#dc2626'}`}>
+                {costReport.operating_margin.toFixed(1) + '%'}
+              </div>
+            </div>
+          )}
+          {costReport.cost_per_resident_day != null && (
+            <div class="metric-card">
+              <div class="label">Cost per Resident Day</div>
+              <div class="value">{'$' + Math.round(costReport.cost_per_resident_day).toLocaleString()}</div>
+            </div>
+          )}
+          {costReport.occupancy_rate != null && (
+            <div class="metric-card">
+              <div class="label">Occupancy Rate</div>
+              <div class="value">{costReport.occupancy_rate.toFixed(1) + '%'}</div>
+            </div>
+          )}
+        </div>
+
+        <p style="font-size: 0.75rem; color: var(--color-text-muted); margin-top: 0.5rem;">
+          Source: CMS SNF Cost Report (FY {costReport.fiscal_year}).
         </p>
       </div>
     )}

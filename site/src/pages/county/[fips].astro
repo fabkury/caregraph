@@ -60,6 +60,48 @@ const csvDataUri = `data:text/csv;charset=utf-8,${encodeURIComponent(csvContent)
 
 const provenance = manifest.provenance?.[0];
 
+// SDOH data
+const sdoh = manifest.data?.sdoh || null;
+
+// SDOH measures grouped by domain
+const sdohDomains: Array<{ domain: string; measures: Array<{ key: string; label: string }> }> = [
+  {
+    domain: 'Economic Stability',
+    measures: [
+      { key: 'pct_poverty', label: 'Poverty Rate' },
+      { key: 'median_household_income', label: 'Median Household Income' },
+      { key: 'unemployment_rate', label: 'Unemployment Rate' },
+    ],
+  },
+  {
+    domain: 'Education & Connectivity',
+    measures: [
+      { key: 'pct_no_high_school', label: 'No High School Diploma' },
+      { key: 'pct_broadband', label: 'Broadband Access' },
+      { key: 'pct_no_internet', label: 'No Internet Access' },
+    ],
+  },
+  {
+    domain: 'Housing & Demographics',
+    measures: [
+      { key: 'pct_crowded_housing', label: 'Crowded Housing' },
+      { key: 'pct_single_parent', label: 'Single-Parent Households' },
+      { key: 'pct_age_65_plus', label: 'Age 65+' },
+    ],
+  },
+];
+
+// Chronic conditions data
+const chronicConditions = manifest.data?.chronic_conditions || null;
+
+// Get top 5 costliest conditions
+const topCostliest = chronicConditions?.conditions
+  ? [...chronicConditions.conditions]
+      .filter((c: any) => c.per_capita_spending != null)
+      .sort((a: any, b: any) => b.per_capita_spending - a.per_capita_spending)
+      .slice(0, 5)
+  : [];
+
 // PLACES chronic conditions data
 const places = manifest.data?.places || null;
 const placesHighlight = [
@@ -159,6 +201,94 @@ function badgeClass(type: string): string {
         </div>
         <p style="font-size: 0.8rem; color: var(--color-text-muted); margin-top: 0.5rem;">
           Source: CDC PLACES County-Level Data. Values are age-adjusted or crude prevalence estimates.
+        </p>
+      </div>
+    )}
+
+    {sdoh && (
+      <div class="card" id="sdoh">
+        <h2>Social Determinants of Health</h2>
+        <p class="section-help">Community-level social and economic factors that influence health outcomes. Source: AHRQ SDOH Database.</p>
+
+        {sdohDomains.map(({ domain, measures }) => (
+          <div style="margin-bottom: 1rem;">
+            <h3 style="font-size: 1rem; margin-bottom: 0.5rem;">{domain}</h3>
+            <div class="metric-grid">
+              {measures.map(({ key, label }) => {
+                const val = sdoh[key];
+                if (val == null) return null;
+                const moe = sdoh[key + '_moe'];
+                const isIncome = key === 'median_household_income';
+                return (
+                  <div class="metric-card">
+                    <div class="label">{label}</div>
+                    <div class="value">
+                      {isIncome ? '$' + Math.round(val).toLocaleString() : val.toFixed(1) + '%'}
+                    </div>
+                    {moe != null && (
+                      <div style="font-size: 0.75rem; color: var(--color-text-muted);">
+                        MOE: {isIncome ? '\u00b1$' + Math.round(moe).toLocaleString() : '\u00b1' + moe.toFixed(1) + '%'}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
+    )}
+
+    {chronicConditions && chronicConditions.conditions && chronicConditions.conditions.length > 0 && (
+      <div class="card" id="chronic-conditions">
+        <h2>Medicare Chronic Disease Burden</h2>
+        <p class="section-help">Prevalence and per-capita spending for chronic conditions among Medicare beneficiaries in this county.</p>
+
+        {topCostliest.length > 0 && (
+          <div style="margin-bottom: 1rem;">
+            <h3 style="font-size: 1rem; margin-bottom: 0.5rem;">Top 5 Costliest Conditions</h3>
+            <div class="metric-grid">
+              {topCostliest.map((c: any) => (
+                <div class="metric-card">
+                  <div class="label">{c.condition_name}</div>
+                  <div class="value">{'$' + Math.round(c.per_capita_spending).toLocaleString()}</div>
+                  <div style="font-size: 0.75rem; color: var(--color-text-muted);">per capita</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div style="overflow-x: auto;">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Condition</th>
+                <th style="text-align: right;">Medicare Prevalence</th>
+                <th style="text-align: right;">Per-Capita Spending</th>
+              </tr>
+            </thead>
+            <tbody>
+              {chronicConditions.conditions.map((c: any) => {
+                const aboveNational = c.national_prevalence != null && c.prevalence != null && c.prevalence > c.national_prevalence;
+                return (
+                  <tr>
+                    <td style="font-weight: 500;">{c.condition_name || '\u2014'}</td>
+                    <td style={`text-align: right; ${aboveNational ? 'color: #dc2626; font-weight: 500;' : ''}`}>
+                      {c.prevalence != null ? c.prevalence.toFixed(1) + '%' : '\u2014'}
+                      {aboveNational && <span title="Above national average"> &#9650;</span>}
+                    </td>
+                    <td style="text-align: right;">
+                      {c.per_capita_spending != null ? '$' + Math.round(c.per_capita_spending).toLocaleString() : '\u2014'}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        <p style="font-size: 0.75rem; color: var(--color-text-muted); margin-top: 0.5rem;">
+          Red values with &#9650; indicate prevalence above the national average. Source: CMS Chronic Conditions ({chronicConditions.year || 'latest'}).
         </p>
       </div>
     )}

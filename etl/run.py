@@ -48,6 +48,15 @@ from etl.build.build_compare_data import build_compare_data
 from etl.build.build_explore_indexes import build_explore_indexes
 from etl.build.build_aco_benchmarks import build_aco_benchmarks
 from etl.build.build_aco_peers import build_aco_peers
+from etl.build.enrich_tier_a import (
+    enrich_hospitals_cost_report,
+    enrich_snfs_cost_report,
+    enrich_hospitals_hac,
+    enrich_acos_county_benes,
+    enrich_counties_sdoh,
+    enrich_counties_chronic,
+    enrich_drugs_nadac,
+)
 
 
 def main() -> None:
@@ -127,12 +136,12 @@ def main() -> None:
         hrrp_csv_path=hrrp_csv,
         hvbp_csv_path=hvbp_csv,
         download_date=today,
-        timely_care_csv=downloaded.get("hosp-timely-care"),
-        complications_csv=downloaded.get("hosp-complications"),
-        hcahps_csv=downloaded.get("hosp-hcahps"),
-        hai_csv=downloaded.get("hosp-hai"),
-        unplanned_visits_csv=downloaded.get("hosp-unplanned-visits"),
-        mspb_csv=downloaded.get("hosp-mspb"),
+        timely_care_csv=downloaded["hosp-timely-care"],
+        complications_csv=downloaded["hosp-complications"],
+        hcahps_csv=downloaded["hosp-hcahps"],
+        hai_csv=downloaded["hosp-hai"],
+        unplanned_visits_csv=downloaded["hosp-unplanned-visits"],
+        mspb_csv=downloaded["hosp-mspb"],
     )
 
     # ── Step 9b: Enrich SNFs (penalties + deficiencies + ownership) ─
@@ -140,9 +149,9 @@ def main() -> None:
     snf_enriched = enrich_snfs(
         snf_dir=snf_out,
         download_date=today,
-        penalties_csv=downloaded.get("nh-penalties"),
-        deficiencies_csv=downloaded.get("nh-deficiencies"),
-        ownership_csv=downloaded.get("nh-ownership"),
+        penalties_csv=downloaded["nh-penalties"],
+        deficiencies_csv=downloaded["nh-deficiencies"],
+        ownership_csv=downloaded["nh-ownership"],
     )
 
     # ── Step 9c: Enrich ACOs (participants + SNF affiliates) ────────
@@ -152,8 +161,8 @@ def main() -> None:
         hospital_dir=hospital_out,
         snf_dir=snf_out,
         download_date=today,
-        participants_csv=downloaded.get("aco-participants"),
-        snf_affiliates_csv=downloaded.get("aco-snf-affiliates"),
+        participants_csv=downloaded["aco-participants"],
+        snf_affiliates_csv=downloaded["aco-snf-affiliates"],
     )
 
     # ── Step 10: Enrich counties (CDC PLACES) ───────────────────────
@@ -164,6 +173,42 @@ def main() -> None:
         places_csv_path=places_csv,
         download_date=today,
     )
+
+    # ── Step 10a: Tier A enrichments ──────────────────────────────────
+    print("\n[Step 10a] Enriching hospitals with Cost Report data...")
+    hosp_cr_count = enrich_hospitals_cost_report(
+        hospital_out, downloaded["hosp-cost-report"], today)
+    print(f"  -> {hosp_cr_count} hospitals enriched with cost report data")
+
+    print("\n[Step 10a] Enriching hospitals with HAC Reduction Program data...")
+    hac_count = enrich_hospitals_hac(
+        hospital_out, downloaded["hac-reduction"], today)
+    print(f"  -> {hac_count} hospitals enriched with HAC data")
+
+    print("\n[Step 10a] Enriching SNFs with Cost Report data...")
+    snf_cr_count = enrich_snfs_cost_report(
+        snf_out, downloaded["snf-cost-report"], today)
+    print(f"  -> {snf_cr_count} SNFs enriched with cost report data")
+
+    print("\n[Step 10a] Enriching ACOs with county beneficiary data...")
+    aco_bene_count = enrich_acos_county_benes(
+        aco_out, county_out, downloaded["aco-bene-county"], today)
+    print(f"  -> {aco_bene_count} ACOs enriched with county beneficiary data")
+
+    print("\n[Step 10a] Enriching counties with CDC SDOH data...")
+    sdoh_count = enrich_counties_sdoh(
+        county_out, downloaded["cdc-sdoh"], today)
+    print(f"  -> {sdoh_count} counties enriched with SDOH data")
+
+    print("\n[Step 10a] Enriching counties with Medicare Chronic Conditions data...")
+    chronic_count = enrich_counties_chronic(
+        county_out, downloaded["cms-chronic-conditions"], today)
+    print(f"  -> {chronic_count} counties enriched with chronic conditions data")
+
+    print("\n[Step 10a] Enriching drugs with NADAC pricing data...")
+    nadac_count = enrich_drugs_nadac(
+        drug_out, downloaded["nadac"], today)
+    print(f"  -> {nadac_count} drugs enriched with NADAC pricing")
 
     # ── Step 10b: Build ACO benchmarks & peer cohorts ────────────────
     print("\n[Step 10b] Building ACO benchmarks & peer cohorts...")
@@ -254,6 +299,7 @@ def main() -> None:
                     "hosp-timely-care", "hosp-complications",
                     "hosp-hcahps", "hosp-hai",
                     "hosp-unplanned-visits", "hosp-mspb",
+                    "hosp-cost-report", "hac-reduction",
                 ],
                 "enriched_count": hospital_enriched,
             },
@@ -262,7 +308,9 @@ def main() -> None:
                 "path": "county/",
                 "dataset": "Medicare Geographic Variation by County",
                 "dataset_id": "geo-var-county",
-                "enriched_with": ["cdc-places"],
+                "enriched_with": [
+                    "cdc-places", "cdc-sdoh", "cms-chronic-conditions",
+                ],
                 "enriched_count": county_enriched,
             },
             "snf": {
@@ -272,6 +320,7 @@ def main() -> None:
                 "dataset_id": "nh-provider-info",
                 "enriched_with": [
                     "nh-penalties", "nh-deficiencies", "nh-ownership",
+                    "snf-cost-report",
                 ],
                 "enriched_count": snf_enriched,
             },
@@ -282,6 +331,7 @@ def main() -> None:
                 "dataset_id": "mssp-performance",
                 "enriched_with": [
                     "aco-participants", "aco-snf-affiliates",
+                    "aco-bene-county",
                 ],
                 "enriched_count": aco_enriched,
             },
@@ -290,7 +340,10 @@ def main() -> None:
                 "path": "drug/",
                 "dataset": "Medicare Part D Spending by Drug",
                 "dataset_id": "partd-drug-spending",
-                "enriched_with": ["partb-drug-spending", "partb-discarded-units"],
+                "enriched_with": [
+                    "partb-drug-spending", "partb-discarded-units",
+                    "nadac",
+                ],
             },
             "condition": {
                 "count": condition_count,

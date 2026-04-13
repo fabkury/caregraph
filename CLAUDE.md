@@ -41,10 +41,13 @@ caregraph/
 │   ├── src/
 │   ├── public/
 │   ├── package.json
-│   └── dist/                  # Build output, rsync'd to VPS (gitignored)
-└── deploy/
-    ├── deploy.sh              # rsync + atomic symlink swap
-    └── nginx.conf             # Nginx config for caregraph.org
+│   └── dist/                  # Build output, committed and deployed via GitHub Pages
+├── deploy/
+│   ├── deploy.sh              # Legacy VPS deploy (deprecated)
+│   └── nginx.conf             # Legacy Nginx config (deprecated)
+└── .github/
+    └── workflows/
+        └── deploy.yml         # GitHub Pages deployment workflow
 ```
 
 ## How to run the ETL
@@ -69,12 +72,15 @@ The Astro build reads JSON manifests from `site_data/` and produces static HTML 
 
 ## How to deploy
 
+The site is deployed to GitHub Pages. After building, commit `site/dist/` and push to `main`:
+
 ```bash
-# Requires .env.deploy with VPS_HOST, VPS_USER, REMOTE_PATH
-bash deploy/deploy.sh
+git add site/dist/
+git commit -m "Rebuild site"
+git push
 ```
 
-This rsync's `site/dist/` to the VPS with atomic symlink swap. See `deploy/deploy.sh` for details.
+A GitHub Actions workflow (`.github/workflows/deploy.yml`) automatically deploys the contents of `site/dist/` to GitHub Pages on every push to `main`. The custom domain `caregraph.org` is configured via the `site/public/CNAME` file.
 
 ## Key architectural decisions
 
@@ -84,7 +90,7 @@ This rsync's `site/dist/` to the VPS with atomic symlink swap. See `deploy/deplo
 - **Leaflet for maps.** Raster tiles, zero API-key cost. (Maps are not yet implemented in M1.)
 - **No DuckDB-WASM in v1.** In-browser SQL querying is deferred to v2. v1 Table mode is a client-side data grid.
 - **Manual ETL.** No automated scheduling. The maintainer runs `python etl/run.py` on their workstation.
-- **Direct rsync deploy.** Built artifacts go workstation → VPS via rsync. GitHub holds only source code.
+- **GitHub Pages deploy.** Built artifacts (`site/dist/`) are committed to the repo and deployed to GitHub Pages via GitHub Actions. The custom domain `caregraph.org` points to GitHub Pages.
 
 ## Coding conventions
 
