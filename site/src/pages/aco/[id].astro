@@ -8,6 +8,16 @@ import {
   type FieldDef, type FieldFormat, type PivotTableDef, type Section,
 } from '../../config/aco-fields';
 
+// ── Load benchmark and peer cohort data (shared across all ACO pages) ──
+
+const benchmarksPath = path.resolve(process.cwd(), '..', 'site_data', 'aco_benchmarks.json');
+const peersPath = path.resolve(process.cwd(), '..', 'site_data', 'aco_peer_cohorts.json');
+
+let benchmarkData: any = null;
+let peerData: any = null;
+try { benchmarkData = JSON.parse(fs.readFileSync(benchmarksPath, 'utf-8')); } catch {}
+try { peerData = JSON.parse(fs.readFileSync(peersPath, 'utf-8')); } catch {}
+
 export function getStaticPaths() {
   const siteDataDir = path.resolve(process.cwd(), '..', 'site_data', 'aco');
   const paths: Array<{ params: { id: string }; props: { manifest: any } }> = [];
@@ -35,6 +45,45 @@ const msspMetrics = manifest.data?.mssp_performance?.metrics || {};
 const rawData: Record<string, string> = manifest.data?.mssp_performance?.raw || {};
 const participants = manifest.data?.participants || null;
 const snfAffiliates = manifest.data?.snf_affiliates || null;
+
+// ── Benchmark helpers ────────────────────────────────────────────────
+
+const bm = benchmarkData?.benchmarks || {};
+const acoRanks: Record<string, number> = benchmarkData?.aco_ranks?.[id as string] || {};
+const spendCompMedians: Record<string, number> = benchmarkData?.spending_composition_medians || {};
+
+const peerCohort = peerData?.cohorts?.[id as string] || null;
+const peerMedians: Record<string, number> = peerCohort?.peer_medians || {};
+const peerDesc: string = peerCohort?.cohort_description || '';
+const peerIds: string[] = peerCohort?.peer_ids || [];
+
+function bmMedian(field: string): number | null {
+  return bm[field]?.p50 ?? null;
+}
+
+function peerMed(field: string): number | null {
+  return peerMedians[field] ?? null;
+}
+
+function pctlBadge(field: string, inverted = false): string {
+  const p = acoRanks[field];
+  if (p === undefined) return '';
+  return `p${p}`;
+}
+
+function pctlClass(field: string, inverted = false): string {
+  const p = acoRanks[field];
+  if (p === undefined) return '';
+  const prefix = inverted ? 'pctl-inv' : 'pctl';
+  if (p <= 25) return `${prefix}-low`;
+  if (p >= 75) return `${prefix}-high`;
+  return `${prefix}-mid`;
+}
+
+function fmtBm(val: number | null, format: FieldFormat): string {
+  if (val === null || val === undefined) return '\u2014';
+  return fmtRaw(String(val), format);
+}
 
 // Key metrics to highlight (Explore view)
 const highlightMetrics = [
@@ -166,28 +215,30 @@ interface WaterfallStep {
   value: string;
   cssClass?: string;
   dividerAfter?: boolean;
+  bmKey?: string;
+  bmFmt?: FieldFormat;
 }
 
 function buildWaterfall(): WaterfallStep[] {
   const steps: WaterfallStep[] = [];
   const r = rawData;
 
-  steps.push({ num: '1', label: 'Assigned Beneficiaries',              value: fmtRaw(r.N_AB, 'integer') });
-  steps.push({ num: '2', label: 'Historical Benchmark (per capita)',    value: fmtRaw(r.HistBnchmk, 'dollar') });
+  steps.push({ num: '1', label: 'Assigned Beneficiaries',              value: fmtRaw(r.N_AB, 'integer'), bmKey: 'N_AB', bmFmt: 'integer' });
+  steps.push({ num: '2', label: 'Historical Benchmark (per capita)',    value: fmtRaw(r.HistBnchmk, 'dollar'), bmKey: 'HistBnchmk' });
   steps.push({ num: '3', label: 'Regional Adjustment',                 value: r.RegAdj ? '+' + fmtRaw(r.RegAdj, 'dollar') : '\u2014' });
   steps.push({ num: '4', label: 'Prior Savings Adjustment',            value: r.PriorSavAdj ? '+' + fmtRaw(r.PriorSavAdj, 'dollar') : '\u2014' });
   steps.push({ num: '5', label: 'Adjustment Category',                 value: r.FinalAdjCat || '\u2014' });
-  steps.push({ num: '6', label: 'Updated Benchmark (per capita)',      value: fmtRaw(r.UpdatedBnchmk, 'dollar'), cssClass: 'step-result', dividerAfter: true });
+  steps.push({ num: '6', label: 'Updated Benchmark (per capita)',      value: fmtRaw(r.UpdatedBnchmk, 'dollar'), cssClass: 'step-result', dividerAfter: true, bmKey: 'UpdatedBnchmk' });
 
   steps.push({ num: '7', label: 'Total Benchmark (all beneficiaries)', value: fmtRaw(r.ABtotBnchmk, 'dollar_agg') });
   steps.push({ num: '8', label: 'Total Expenditure (all beneficiaries)', value: fmtRaw(r.ABtotExp, 'dollar_agg') });
-  steps.push({ num: '9', label: 'Per Capita Expenditure (PY)',         value: fmtRaw(r.Per_Capita_Exp_TOTAL_PY, 'dollar') });
+  steps.push({ num: '9', label: 'Per Capita Expenditure (PY)',         value: fmtRaw(r.Per_Capita_Exp_TOTAL_PY, 'dollar'), bmKey: 'Per_Capita_Exp_TOTAL_PY' });
 
   const genSL = parseFloat(r.GenSaveLoss || '0');
   const genClass = genSL > 0 ? 'step-positive' : genSL < 0 ? 'step-negative' : '';
-  steps.push({ num: '10', label: 'Generated Savings / Losses',         value: fmtRaw(r.GenSaveLoss, 'dollar_agg'), cssClass: `step-result ${genClass}`.trim(), dividerAfter: true });
+  steps.push({ num: '10', label: 'Generated Savings / Losses',         value: fmtRaw(r.GenSaveLoss, 'dollar_agg'), cssClass: `step-result ${genClass}`.trim(), dividerAfter: true, bmKey: 'GenSaveLoss', bmFmt: 'dollar_agg' });
 
-  steps.push({ num: '11', label: 'Savings Rate',                       value: fmtRaw(r.Sav_rate, 'percent') });
+  steps.push({ num: '11', label: 'Savings Rate',                       value: fmtRaw(r.Sav_rate, 'percent'), bmKey: 'Sav_rate', bmFmt: 'percent' });
   steps.push({ num: '12', label: 'Minimum Savings Rate (threshold)',    value: fmtRaw(r.MinSavPerc, 'percent') });
   steps.push({ num: '13', label: 'Guardrail Applied',                  value: r.Guardrail === '1' ? 'Yes' : r.Guardrail === '0' ? 'No' : '\u2014' });
   steps.push({ num: '14', label: 'Final Shared Savings Rate',          value: fmtRaw(r.FinalShareRate, 'percent') });
@@ -195,7 +246,7 @@ function buildWaterfall(): WaterfallStep[] {
 
   const earnSL = parseFloat(r.EarnSaveLoss || '0');
   const earnClass = earnSL > 0 ? 'step-positive' : earnSL < 0 ? 'step-negative' : '';
-  steps.push({ num: '16', label: 'Earned Savings / Losses',            value: fmtRaw(r.EarnSaveLoss, 'dollar_agg'), cssClass: `step-result ${earnClass}`.trim(), dividerAfter: true });
+  steps.push({ num: '16', label: 'Earned Savings / Losses',            value: fmtRaw(r.EarnSaveLoss, 'dollar_agg'), cssClass: `step-result ${earnClass}`.trim(), dividerAfter: true, bmKey: 'EarnSaveLoss', bmFmt: 'dollar_agg' });
 
   steps.push({ num: '', label: 'Revenue-to-Expense Category',          value: r.Rev_Exp_Cat || '\u2014' });
 
@@ -221,6 +272,7 @@ interface QualityRow {
   help?: string;
   isMultiPathway?: boolean;
   pathways?: { label: string; value: string }[];
+  bmKey?: string;
 }
 
 function buildQualityRows(): QualityRow[] {
@@ -229,19 +281,19 @@ function buildQualityRows(): QualityRow[] {
   // Composite score
   const qs = rawData.QualScore;
   if (qs && qs !== '-' && qs !== '*') {
-    rows.push({ label: 'Overall Quality Score (Composite)', value: fmtRaw(qs, 'decimal2') });
+    rows.push({ label: 'Overall Quality Score (Composite)', value: fmtRaw(qs, 'decimal2'), bmKey: 'QualScore' });
   }
 
   // Standalone measures
-  rows.push({ label: 'All-Cause Unplanned Admissions (risk-adjusted rate)', value: fmtRaw(rawData.Measure_479, 'decimal2'), lowerIsBetter: true, help: 'Risk-standardized rate. Lower indicates better care coordination.' });
-  rows.push({ label: 'Risk-Standardized All-Condition Readmission Rate', value: fmtRaw(rawData.Measure_484, 'decimal2'), lowerIsBetter: true, help: 'Unplanned readmissions within 30 days. Lower is better.' });
-  rows.push({ label: 'Falls: Screening for Future Fall Risk', value: fmtRaw(rawData.QualityID_318, 'decimal2') });
-  rows.push({ label: 'Influenza Immunization', value: fmtRaw(rawData.QualityID_110, 'decimal2') });
-  rows.push({ label: 'Tobacco Use: Screening & Cessation Intervention', value: fmtRaw(rawData.QualityID_226, 'decimal2') });
-  rows.push({ label: 'Colorectal Cancer Screening', value: fmtRaw(rawData.QualityID_113, 'decimal2') });
-  rows.push({ label: 'Breast Cancer Screening', value: fmtRaw(rawData.QualityID_112, 'decimal2') });
-  rows.push({ label: 'Statin Therapy for CVD Prevention', value: fmtRaw(rawData.QualityID_438, 'decimal2') });
-  rows.push({ label: 'Depression Remission at 12 Months', value: fmtRaw(rawData.QualityID_370, 'decimal2') });
+  rows.push({ label: 'All-Cause Unplanned Admissions (risk-adjusted rate)', value: fmtRaw(rawData.Measure_479, 'decimal2'), lowerIsBetter: true, help: 'Risk-standardized rate. Lower indicates better care coordination.', bmKey: 'Measure_479' });
+  rows.push({ label: 'Risk-Standardized All-Condition Readmission Rate', value: fmtRaw(rawData.Measure_484, 'decimal2'), lowerIsBetter: true, help: 'Unplanned readmissions within 30 days. Lower is better.', bmKey: 'Measure_484' });
+  rows.push({ label: 'Falls: Screening for Future Fall Risk', value: fmtRaw(rawData.QualityID_318, 'decimal2'), bmKey: 'QualityID_318' });
+  rows.push({ label: 'Influenza Immunization', value: fmtRaw(rawData.QualityID_110, 'decimal2'), bmKey: 'QualityID_110' });
+  rows.push({ label: 'Tobacco Use: Screening & Cessation Intervention', value: fmtRaw(rawData.QualityID_226, 'decimal2'), bmKey: 'QualityID_226' });
+  rows.push({ label: 'Colorectal Cancer Screening', value: fmtRaw(rawData.QualityID_113, 'decimal2'), bmKey: 'QualityID_113' });
+  rows.push({ label: 'Breast Cancer Screening', value: fmtRaw(rawData.QualityID_112, 'decimal2'), bmKey: 'QualityID_112' });
+  rows.push({ label: 'Statin Therapy for CVD Prevention', value: fmtRaw(rawData.QualityID_438, 'decimal2'), bmKey: 'QualityID_438' });
+  rows.push({ label: 'Depression Remission at 12 Months', value: fmtRaw(rawData.QualityID_370, 'decimal2'), bmKey: 'QualityID_370' });
 
   // Multi-pathway measures: show reported value, collapse unreported
   for (const mp of MULTI_PATHWAY_MEASURES) {
@@ -250,12 +302,15 @@ function buildQualityRows(): QualityRow[] {
       value: fmtRaw(rawData[`QualityID_${mp.measureId}_${pw.suffix}`], 'decimal2'),
     }));
     const reported = pathways.find(p => p.value !== '\u2014' && p.value !== '-');
+    // Use the WI variant for benchmark lookup (most common reporting pathway)
+    const bmKeyForMp = `QualityID_${mp.measureId}_WI`;
     rows.push({
       label: mp.label,
       value: reported ? reported.value : '\u2014',
       lowerIsBetter: mp.lowerIsBetter,
       isMultiPathway: true,
       pathways,
+      bmKey: bmKeyForMp,
     });
   }
 
@@ -488,7 +543,24 @@ function badgeClass(type: string): string {
       {ACO_SECTIONS.map(s => (
         <a href={`#${s.id}`}>{s.title}</a>
       ))}
+      {peerCohort && <a href="#peer-cohort">Peer Cohort</a>}
     </nav>
+
+    {/* Benchmark legend */}
+    <div class="benchmark-legend">
+      <span class="benchmark-legend-item">
+        <span class="benchmark-legend-swatch" style="background: #fee2e2;"></span> Bottom quartile
+      </span>
+      <span class="benchmark-legend-item">
+        <span class="benchmark-legend-swatch" style="background: #fef9c3;"></span> Middle
+      </span>
+      <span class="benchmark-legend-item">
+        <span class="benchmark-legend-swatch" style="background: #dcfce7;"></span> Top quartile
+      </span>
+      <span class="benchmark-legend-item" style="color: var(--color-text-muted);">
+        MSSP median shown in gray &middot; Peer median in blue
+      </span>
+    </div>
 
     <!-- 1. Program Structure -->
     {(() => {
@@ -533,6 +605,8 @@ function badgeClass(type: string): string {
               <th>Step</th>
               <th>Description</th>
               <th>Value</th>
+              <th class="bm-col">MSSP Median</th>
+              {peerCohort && <th class="peer-col">Peer Median</th>}
             </tr>
           </thead>
           <tbody>
@@ -541,10 +615,17 @@ function badgeClass(type: string): string {
                 <tr class={step.cssClass || ''}>
                   <td>{step.num}</td>
                   <td>{step.label}</td>
-                  <td>{step.value}</td>
+                  <td>
+                    {step.value}
+                    {step.bmKey && pctlBadge(step.bmKey) && (
+                      <span class={`pctl-badge ${pctlClass(step.bmKey)}`}>{pctlBadge(step.bmKey)}</span>
+                    )}
+                  </td>
+                  <td class="bm-col">{step.bmKey ? fmtBm(bmMedian(step.bmKey), step.bmFmt || 'dollar') : ''}</td>
+                  {peerCohort && <td class="peer-col">{step.bmKey ? fmtBm(peerMed(step.bmKey), step.bmFmt || 'dollar') : ''}</td>}
                 </tr>
                 {step.dividerAfter && (
-                  <tr class="step-divider"><td colspan="3"></td></tr>
+                  <tr class="step-divider"><td colspan={peerCohort ? "5" : "4"}></td></tr>
                 )}
               </>
             ))}
@@ -553,10 +634,17 @@ function badgeClass(type: string): string {
       </div>
     </section>
 
-    <!-- 3. Per Capita Expenditure pivot table -->
+    <!-- 3. Per Capita Expenditure pivot table with risk-adjusted comparison -->
     {(() => {
       const sec = ACO_SECTIONS.find(s => s.id === 'per-capita-expenditure')!;
       const pivot = sec.pivot!;
+      // HCC risk score map for risk-adjusted expected expenditure
+      const hccMap = {
+        'ESRD': 'CMS_HCC_RiskScore_ESRD_PY',
+        'DIS': 'CMS_HCC_RiskScore_DIS_PY',
+        'AGDU': 'CMS_HCC_RiskScore_AGDU_PY',
+        'AGND': 'CMS_HCC_RiskScore_AGND_PY',
+      } as any;
       return (
         <section class="aco-section" id={sec.id}>
           <a href="#table-view" class="section-back">Back to top</a>
@@ -569,6 +657,8 @@ function badgeClass(type: string): string {
                   <th>Population Segment</th>
                   {pivot.periods.map(p => <th>{p.label}</th>)}
                   <th>Trend</th>
+                  <th class="bm-col" title="Expected expenditure given this ACO's risk score: MSSP median × HCC risk score">Risk-Adj. Expected</th>
+                  <th class="bm-col">Difference</th>
                 </tr>
               </thead>
               <tbody>
@@ -576,6 +666,14 @@ function badgeClass(type: string): string {
                   const vals = pivot.periods.map(p => rawData[`${pivot.fieldPrefix}${seg.code}_${p.code}`]);
                   const first = vals[0];
                   const last = vals[vals.length - 1];
+                  // Risk-adjusted expected: MSSP median PY expenditure for this segment × ACO's HCC score
+                  const pyField = `Per_Capita_Exp_ALL_${seg.code}_PY`;
+                  const msspMedPy = bmMedian(pyField);
+                  const hccField = hccMap[seg.code];
+                  const hccVal = hccField ? parseFloat(rawData[hccField] || '0') : null;
+                  const actualPy = parseFloat(rawData[pyField] || '0');
+                  const expected = (msspMedPy && hccVal) ? Math.round(msspMedPy * hccVal) : null;
+                  const diff = (expected && actualPy) ? actualPy - expected : null;
                   return (
                     <tr>
                       <td>{seg.label}</td>
@@ -592,19 +690,30 @@ function badgeClass(type: string): string {
                       <td class={trendClass(first, last, true)}>
                         {trendArrow(first, last)}
                       </td>
+                      <td class="bm-col">{expected ? '$' + expected.toLocaleString() : '\u2014'}</td>
+                      <td class={diff !== null ? (diff < 0 ? 'bm-diff-pos' : 'bm-diff-neg') : ''}>
+                        {diff !== null ? (diff < 0 ? '\u2212' : '+') + '$' + Math.abs(diff).toLocaleString() : '\u2014'}
+                      </td>
                     </tr>
                   );
                 })}
-                {/* Total row (PY only) */}
-                <tr class="total-row">
-                  <td>Total</td>
-                  {pivot.periods.map(p => (
-                    <td>
-                      {p.code === 'PY' ? fmtRaw(rawData.Per_Capita_Exp_TOTAL_PY, 'dollar') : ''}
-                    </td>
-                  ))}
-                  <td></td>
-                </tr>
+                {/* Total row */}
+                {(() => {
+                  const totalMed = bmMedian('Per_Capita_Exp_TOTAL_PY');
+                  const totalPeerMed = peerMed('Per_Capita_Exp_TOTAL_PY');
+                  const totalActual = parseFloat(rawData.Per_Capita_Exp_TOTAL_PY || '0');
+                  return (
+                    <tr class="total-row">
+                      <td>Total</td>
+                      {pivot.periods.map(p => (
+                        <td>{p.code === 'PY' ? fmtRaw(rawData.Per_Capita_Exp_TOTAL_PY, 'dollar') : ''}</td>
+                      ))}
+                      <td></td>
+                      <td class="bm-col">{totalMed ? '$' + Math.round(totalMed).toLocaleString() : ''}</td>
+                      <td class="peer-col">{totalPeerMed ? '$' + Math.round(totalPeerMed).toLocaleString() : ''}</td>
+                    </tr>
+                  );
+                })()}
               </tbody>
             </table>
           </div>
@@ -622,7 +731,7 @@ function badgeClass(type: string): string {
           <h2>{sec.title}</h2>
           {pivot.help && <p class="section-help">{pivot.help}</p>}
 
-          {/* CMS-HCC Risk Scores */}
+          {/* CMS-HCC Risk Scores with Coding Intensity Gap */}
           <h3 style="font-size: 1rem; margin-top: 1rem;">{pivot.title}</h3>
           <div style="overflow-x: auto;">
             <table class="pivot-table">
@@ -631,6 +740,8 @@ function badgeClass(type: string): string {
                   <th>Population Segment</th>
                   {pivot.periods.map(p => <th>{p.label}</th>)}
                   <th>Trend</th>
+                  <th class="bm-col" title="HCC Risk Score minus Demographic Risk Score (PY). Represents the coding-driven component of risk.">Coding Gap</th>
+                  <th class="bm-col">MSSP Med.</th>
                 </tr>
               </thead>
               <tbody>
@@ -638,6 +749,12 @@ function badgeClass(type: string): string {
                   const vals = pivot.periods.map(p => rawData[`${pivot.fieldPrefix}${seg.code}_${p.code}`]);
                   const first = vals[0];
                   const last = vals[vals.length - 1];
+                  // Coding intensity gap: HCC PY - Demographic PY
+                  const hccPy = parseFloat(rawData[`CMS_HCC_RiskScore_${seg.code}_PY`] || '');
+                  const demPy = parseFloat(rawData[`Demog_RiskScore_${seg.code}_PY`] || '');
+                  const codingGap = (!isNaN(hccPy) && !isNaN(demPy)) ? hccPy - demPy : null;
+                  const hccPyField = `CMS_HCC_RiskScore_${seg.code}_PY`;
+                  const msspMedHcc = bmMedian(hccPyField);
                   return (
                     <tr>
                       <td>{seg.label}</td>
@@ -654,6 +771,10 @@ function badgeClass(type: string): string {
                       <td class={trendClass(first, last, true)}>
                         {trendArrow(first, last)}
                       </td>
+                      <td class={codingGap !== null ? (codingGap > 0.02 ? 'coding-gap-pos' : codingGap < -0.02 ? 'coding-gap-neg' : 'coding-gap-zero') : ''}>
+                        {codingGap !== null ? (codingGap >= 0 ? '+' : '') + codingGap.toFixed(3) : '\u2014'}
+                      </td>
+                      <td class="bm-col">{msspMedHcc !== null ? msspMedHcc.toFixed(3) : '\u2014'}</td>
                     </tr>
                   );
                 })}
@@ -780,17 +901,23 @@ function badgeClass(type: string): string {
         </div>
       </div>
 
-      {/* Special Populations callouts */}
+      {/* Special Populations callouts with MSSP comparison */}
       <div class="demo-section">
         <h3>Special Populations</h3>
         <div class="demo-callout-grid">
           <div class="demo-callout">
-            <span class="demo-callout-value">{rawData.Perc_Dual || '\u2014'}%</span>
-            <span class="demo-callout-label">Dual-Eligible</span>
+            <span class="demo-callout-value">
+              {rawData.Perc_Dual || '\u2014'}%
+              {pctlBadge('Perc_Dual') && <span class={`pctl-badge ${pctlClass('Perc_Dual')}`}>{pctlBadge('Perc_Dual')}</span>}
+            </span>
+            <span class="demo-callout-label">Dual-Eligible (MSSP median: {bmMedian('Perc_Dual')?.toFixed(1) || '?'}%)</span>
           </div>
           <div class="demo-callout">
-            <span class="demo-callout-value">{rawData.Perc_LTI || '\u2014'}%</span>
-            <span class="demo-callout-label">Long-Term Institutionalized</span>
+            <span class="demo-callout-value">
+              {rawData.Perc_LTI || '\u2014'}%
+              {pctlBadge('Perc_LTI') && <span class={`pctl-badge ${pctlClass('Perc_LTI')}`}>{pctlBadge('Perc_LTI')}</span>}
+            </span>
+            <span class="demo-callout-label">Long-Term Institutionalized (MSSP median: {bmMedian('Perc_LTI')?.toFixed(2) || '?'}%)</span>
           </div>
           <div class="demo-callout">
             <span class="demo-callout-value">{parseInt(rawData.N_Ben_VA_Only || '0') + parseInt(rawData.N_Ben_CBA_and_VA || '0')}</span>
@@ -843,31 +970,67 @@ function badgeClass(type: string): string {
       </div>
     </section>
 
-    <!-- 6. Per Capita Spending by Service Category -->
+    <!-- 6. Per Capita Spending by Service Category with composition -->
     {(() => {
       const sec = ACO_SECTIONS.find(s => s.id === 'spending-by-service')!;
+      // Compute composition percentages (exclude sub-categories of inpatient)
+      const compFields = ['CapAnn_INP_All', 'CapAnn_HSP', 'CapAnn_SNF', 'CapAnn_OPD', 'CapAnn_PB', 'CapAnn_AmbPay', 'CapAnn_HHA', 'CapAnn_DME'];
+      const compTotal = compFields.reduce((s, k) => s + (parseFloat(rawData[k] || '0') || 0), 0);
       return (
         <section class="aco-section" id={sec.id}>
           <a href="#table-view" class="section-back">Back to top</a>
           <h2>{sec.title}</h2>
-          <p class="section-help">Annual per-beneficiary spending by care setting (Parts A & B).</p>
-          <table class="kv-table">
-            <tbody>
-              {sec.fields!.map(f => (
+          <p class="section-help">Annual per-beneficiary spending by care setting. Bar shows this ACO's share; red marker shows MSSP median share.</p>
+          <div style="overflow-x: auto;">
+            <table class="compare-table">
+              <thead>
                 <tr>
-                  <td>{f.label}</td>
-                  <td>
-                    {isSuppressed(rawData[f.key])
-                      ? <span class="val-suppressed" title="Value suppressed by CMS to protect beneficiary privacy (cell size <11).">*</span>
-                      : isNotReported(rawData[f.key])
-                        ? <span class="val-not-reported">{'\u2014'}</span>
-                        : fmtRaw(rawData[f.key], f.format)
-                    }
-                  </td>
+                  <th>Service Category</th>
+                  <th>This ACO</th>
+                  <th>% Share</th>
+                  <th class="bm-col">MSSP Median</th>
+                  {peerCohort && <th class="peer-col">Peer Median</th>}
+                  <th></th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {sec.fields!.map(f => {
+                  const val = parseFloat(rawData[f.key] || '0');
+                  const pctShare = compTotal > 0 && compFields.includes(f.key) ? (val / compTotal * 100) : null;
+                  const msspPct = spendCompMedians[f.key] || null;
+                  const med = bmMedian(f.key);
+                  const peer = peerMed(f.key);
+                  return (
+                    <tr>
+                      <td>{f.label}</td>
+                      <td>
+                        {isSuppressed(rawData[f.key])
+                          ? <span class="val-suppressed" title="Suppressed">*</span>
+                          : isNotReported(rawData[f.key])
+                            ? <span class="val-not-reported">{'\u2014'}</span>
+                            : fmtRaw(rawData[f.key], f.format)
+                        }
+                        {pctlBadge(f.key) && <span class={`pctl-badge ${pctlClass(f.key)}`}>{pctlBadge(f.key)}</span>}
+                      </td>
+                      <td style="font-size: 0.85em; color: var(--color-text-muted);">
+                        {pctShare !== null ? pctShare.toFixed(1) + '%' : ''}
+                      </td>
+                      <td class="bm-col">{med !== null ? fmtBm(med, f.format) : '\u2014'}</td>
+                      {peerCohort && <td class="peer-col">{peer !== null ? fmtBm(peer, f.format) : '\u2014'}</td>}
+                      <td style="width: 100px;">
+                        {pctShare !== null && (
+                          <div class="composition-bar-track">
+                            <div class="composition-bar-fill" style={`width: ${Math.min(pctShare * 2, 100)}%`}></div>
+                            {msspPct && <div class="composition-bar-median-marker" style={`left: ${Math.min(msspPct * 2, 100)}%`}></div>}
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         </section>
       );
     })()}
@@ -907,23 +1070,40 @@ function badgeClass(type: string): string {
             </div>
           )}
 
-          <table class="kv-table">
-            <tbody>
-              {sec.fields!.map(f => (
+          <div style="overflow-x: auto;">
+            <table class="compare-table">
+              <thead>
                 <tr>
-                  <td>{f.label}</td>
-                  <td>
-                    {isSuppressed(rawData[f.key])
-                      ? <span class="val-suppressed" title="Value suppressed by CMS to protect beneficiary privacy (cell size <11).">*</span>
-                      : isNotReported(rawData[f.key])
-                        ? <span class="val-not-reported">{'\u2014'}</span>
-                        : fmtRaw(rawData[f.key], f.format)
-                    }
-                  </td>
+                  <th>Metric</th>
+                  <th>This ACO</th>
+                  <th class="bm-col">MSSP Median</th>
+                  {peerCohort && <th class="peer-col">Peer Median</th>}
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {sec.fields!.map(f => {
+                  const med = bmMedian(f.key);
+                  const peer = peerMed(f.key);
+                  return (
+                    <tr>
+                      <td>{f.label}</td>
+                      <td>
+                        {isSuppressed(rawData[f.key])
+                          ? <span class="val-suppressed" title="Suppressed">*</span>
+                          : isNotReported(rawData[f.key])
+                            ? <span class="val-not-reported">{'\u2014'}</span>
+                            : fmtRaw(rawData[f.key], f.format)
+                        }
+                        {pctlBadge(f.key) && <span class={`pctl-badge ${pctlClass(f.key)}`}>{pctlBadge(f.key)}</span>}
+                      </td>
+                      <td class="bm-col">{med !== null ? fmtBm(med, f.format) : '\u2014'}</td>
+                      {peerCohort && <td class="peer-col">{peer !== null ? fmtBm(peer, f.format) : '\u2014'}</td>}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         </section>
       );
     })()}
@@ -969,26 +1149,33 @@ function badgeClass(type: string): string {
       );
     })()}
 
-    <!-- 9. CAHPS Patient Experience -->
+    <!-- 9. CAHPS Patient Experience with benchmarks -->
     {(() => {
       const sec = ACO_SECTIONS.find(s => s.id === 'cahps')!;
       return (
         <section class="aco-section" id={sec.id}>
           <a href="#table-view" class="section-back">Back to top</a>
           <h2>{sec.title}</h2>
-          <p class="section-help">Consumer Assessment of Healthcare Providers and Systems survey scores (0–100 scale).</p>
+          <p class="section-help">Consumer Assessment of Healthcare Providers and Systems survey scores (0–100 scale). Gray marker = MSSP median. Blue marker = peer median.</p>
           <div>
             {sec.fields!.map(f => {
               const val = rawData[f.key];
               const num = parseFloat(val || '0');
               const hasValue = val && val !== '-' && val !== '*' && !isNaN(num);
+              const med = bmMedian(f.key);
+              const peer = peerMed(f.key);
               return (
                 <div class="cahps-row">
-                  <span class="cahps-label">{f.label}</span>
+                  <span class="cahps-label">
+                    {f.label}
+                    {pctlBadge(f.key) && <span class={`pctl-badge ${pctlClass(f.key)}`}>{pctlBadge(f.key)}</span>}
+                  </span>
                   <div class="cahps-bar-track">
                     {hasValue && (
                       <div class="cahps-bar-fill" style={`width: ${Math.min(num, 100)}%`}></div>
                     )}
+                    {med !== null && <div class="cahps-bar-marker" style={`left: ${Math.min(med, 100)}%`} title={`MSSP median: ${med.toFixed(1)}`}></div>}
+                    {peer !== null && <div class="cahps-bar-marker cahps-bar-marker-peer" style={`left: ${Math.min(peer, 100)}%`} title={`Peer median: ${peer.toFixed(1)}`}></div>}
                   </div>
                   <span class="cahps-score">
                     {isSuppressed(val)
@@ -1006,43 +1193,62 @@ function badgeClass(type: string): string {
       );
     })()}
 
-    <!-- 10. Clinical Quality Measures -->
+    <!-- 10. Clinical Quality Measures with thresholds -->
     <section class="aco-section" id="quality-measures">
       <a href="#table-view" class="section-back">Back to top</a>
       <h2>Clinical Quality Measures</h2>
       <p class="section-help">MSSP quality measures. Measures marked "lower is better" are inverted — a lower score indicates better performance.</p>
 
-      <table class="kv-table">
-        <tbody>
-          {qualityRows.map(row => (
+      <div style="overflow-x: auto;">
+        <table class="compare-table">
+          <thead>
             <tr>
-              <td>
-                {row.label}
-                {row.lowerIsBetter && <span class="measure-direction"> (lower is better)</span>}
-                {row.help && <span class="help-tip" title={row.help}>?</span>}
-                {row.isMultiPathway && row.pathways && (
-                  <details style="margin-top: 0.25rem; font-size: 0.8rem;">
-                    <summary style="color: var(--color-text-muted); cursor: pointer;">Reporting pathways</summary>
-                    <ul style="margin: 0.25rem 0 0 1rem; padding: 0; list-style: none; color: var(--color-text-muted);">
-                      {row.pathways.map(pw => (
-                        <li>{pw.label}: {pw.value === '\u2014' ? 'Not reported' : pw.value}</li>
-                      ))}
-                    </ul>
-                  </details>
-                )}
-              </td>
-              <td>
-                {isSuppressed(row.value)
-                  ? <span class="val-suppressed" title="Suppressed">*</span>
-                  : row.value === '\u2014'
-                    ? <span class="val-not-reported">{'\u2014'}</span>
-                    : row.value
-                }
-              </td>
+              <th>Measure</th>
+              <th>This ACO</th>
+              <th class="bm-col">MSSP Median</th>
+              {peerCohort && <th class="peer-col">Peer Median</th>}
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {qualityRows.map(row => {
+              const med = bmMedian(row.bmKey || '');
+              const peer = peerMed(row.bmKey || '');
+              return (
+                <tr>
+                  <td>
+                    {row.label}
+                    {row.lowerIsBetter && <span class="measure-direction"> (lower is better)</span>}
+                    {row.help && <span class="help-tip" title={row.help}>?</span>}
+                    {row.bmKey && pctlBadge(row.bmKey) && (
+                      <span class={`pctl-badge ${pctlClass(row.bmKey, row.lowerIsBetter)}`}>{pctlBadge(row.bmKey)}</span>
+                    )}
+                    {row.isMultiPathway && row.pathways && (
+                      <details style="margin-top: 0.25rem; font-size: 0.8rem;">
+                        <summary style="color: var(--color-text-muted); cursor: pointer;">Reporting pathways</summary>
+                        <ul style="margin: 0.25rem 0 0 1rem; padding: 0; list-style: none; color: var(--color-text-muted);">
+                          {row.pathways.map(pw => (
+                            <li>{pw.label}: {pw.value === '\u2014' ? 'Not reported' : pw.value}</li>
+                          ))}
+                        </ul>
+                      </details>
+                    )}
+                  </td>
+                  <td>
+                    {isSuppressed(row.value)
+                      ? <span class="val-suppressed" title="Suppressed">*</span>
+                      : row.value === '\u2014'
+                        ? <span class="val-not-reported">{'\u2014'}</span>
+                        : row.value
+                    }
+                  </td>
+                  <td class="bm-col">{med !== null ? med.toFixed(2) : '\u2014'}</td>
+                  {peerCohort && <td class="peer-col">{peer !== null ? peer.toFixed(2) : '\u2014'}</td>}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
 
       {/* Quality Reporting Flags */}
       <h3 style="font-size: 1rem; margin-top: 1.5rem;">Quality Reporting Flags</h3>
@@ -1062,6 +1268,30 @@ function badgeClass(type: string): string {
         })}
       </div>
     </section>
+
+    <!-- Peer Cohort section -->
+    {peerCohort && (
+      <section class="aco-section" id="peer-cohort">
+        <a href="#table-view" class="section-back">Back to top</a>
+        <h2>Peer Cohort</h2>
+        <p class="section-help">{peerDesc}</p>
+
+        <details>
+          <summary style="cursor: pointer; color: var(--color-primary); font-size: 0.9rem;">
+            View {peerIds.length} peer ACOs
+          </summary>
+          <div class="peer-list">
+            {peerIds.map(pid => (
+              <a href={`/aco/${pid}/`} class="peer-chip">{pid}</a>
+            ))}
+          </div>
+          <p style="font-size: 0.8rem; color: var(--color-text-muted); margin-top: 0.5rem;">
+            Peers selected using weighted distance across 15 structural features (population acuity, composition, scale, care infrastructure, assignment type) within the {peerCohort.track_group} track partition.
+            <a href="/methodology/">Learn more</a>
+          </p>
+        </details>
+      </section>
+    )}
 
     <!-- Uncovered fields (if any remain) -->
     {uncoveredEntries.length > 0 && (

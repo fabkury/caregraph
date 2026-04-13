@@ -46,6 +46,8 @@ from etl.build.build_search_index import build_search_index
 from etl.build.build_map_layers import build_map_layers
 from etl.build.build_compare_data import build_compare_data
 from etl.build.build_explore_indexes import build_explore_indexes
+from etl.build.build_aco_benchmarks import build_aco_benchmarks
+from etl.build.build_aco_peers import build_aco_peers
 
 
 def main() -> None:
@@ -162,6 +164,13 @@ def main() -> None:
         places_csv_path=places_csv,
         download_date=today,
     )
+
+    # ── Step 10b: Build ACO benchmarks & peer cohorts ────────────────
+    print("\n[Step 10b] Building ACO benchmarks & peer cohorts...")
+    benchmarks_path = site_data_dir / "aco_benchmarks.json"
+    benchmark_count = build_aco_benchmarks(aco_out, benchmarks_path)
+    peers_path = site_data_dir / "aco_peer_cohorts.json"
+    peer_count = build_aco_peers(aco_out, peers_path)
 
     # ── Step 11: Build cross-links ──────────────────────────────────
     print("\n[Step 11] Building cross-links between entities...")
