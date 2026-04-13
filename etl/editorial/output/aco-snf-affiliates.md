@@ -1,0 +1,31 @@
+Here is the methodology page:
+
+## Overview
+
+The ACO SNF Affiliates dataset is published by the Centers for Medicare & Medicaid Services (CMS) as a public-use file under the Medicare Shared Savings Program (MSSP). It identifies skilled nursing facilities (SNFs) that have entered into a preferred affiliation with an MSSP ACO under the 3-day SNF waiver program. Under this waiver, Medicare fee-for-service beneficiaries assigned to the ACO may be admitted directly to an affiliated SNF without the standard requirement of a qualifying 3-day prior inpatient hospital stay. Each row represents one ACO-to-SNF affiliation, with approximately 6 fields per record including the ACO identifier, the SNF's CMS Certification Number (CCN), the SNF name, and state. The source file is hosted on data.cms.gov and is downloaded during the CareGraph ETL pipeline via the CMS Data API.
+
+This dataset answers questions such as: Which SNFs has this ACO designated as preferred partners under the 3-day waiver? How many affiliated SNFs does the ACO have, and in which states? Does a given SNF have a waiver affiliation with any MSSP ACO? It provides the SNF affiliates list displayed on ACO entity pages and generates reverse links on SNF entity pages indicating which ACOs have designated them as affiliates.
+
+## Join Strategy
+
+Each record joins to an ACO entity page using the `ACO_ID` field, a character string following the pattern `A####` (e.g., `A0001`). During ETL, the `normalize_aco_id()` function in `etl/normalize/keys.py` strips whitespace, uppercases the value, and removes non-alphanumeric characters. The join is one-to-many: a single ACO may have dozens of affiliated SNFs, and all matching records are collected into a `snf_affiliates` array on the ACO manifest at `site_data/aco/{ACO_ID}.json`. Each affiliate record within the array contains `snf_ccn`, `snf_name`, and `state`. The SNF CCN is normalized by `normalize_ccn()` to a 6-character zero-padded string (e.g., `015001`). Column names are detected at runtime using `_find_column()`, which tries exact match, case-insensitive match, then substring match against candidate lists â€” this handles variation in CMS column headers across releases (e.g., `SNF_CCN` vs. `SNF CCN` vs. `Affiliate_CCN`). Rows with blank or unparseable ACO IDs are skipped. Rows that have neither a valid `snf_ccn` nor a `snf_name` after cleaning are also excluded. The ETL writes reverse links onto matching SNF entity manifests so that SNF pages display "ACO snf affiliate" in their related entities section.
+
+## Known Limitations
+
+- **Waiver participants only.** This dataset covers only MSSP ACOs that have applied for and been approved to participate in the 3-day SNF waiver program. ACOs that do not appear in this dataset may still have beneficiaries who use SNFs, but those beneficiaries must meet the standard 3-day inpatient stay requirement. The absence of an ACO from this dataset does not indicate that the ACO has no relationship with any SNF.
+- **Roster, not utilization.** The affiliate list is a roster of eligible facilities, not a utilization report. It does not indicate how many beneficiaries actually used the 3-day waiver to access each SNF, nor the volume or outcomes of admissions at affiliated facilities.
+- **Affiliation is ACO-to-SNF, not hospital-to-SNF.** The dataset records affiliations at the ACO level, not at the level of individual hospitals or provider practices within the ACO. A single affiliation record does not imply common ownership, exclusive referral arrangements, or any specific clinical integration between the SNF and particular ACO member providers.
+- **Medicare fee-for-service only.** The MSSP and the 3-day SNF waiver apply exclusively to Original Medicare (fee-for-service) beneficiaries. Medicare Advantage enrollees are excluded. In markets with high MA penetration, this dataset reflects a limited view of ACO-SNF care coordination arrangements.
+- **Reporting lag.** Changes to affiliate rosters â€” new affiliations, terminations, or ACO exits from the waiver program â€” may take several months to appear in the published data due to CMS processing and publication cycles.
+- **No quality or performance indicators.** The dataset contains no information about the quality of care at affiliated SNFs, the SNF's star rating, staffing levels, or any outcomes associated with the waiver. It is purely an administrative roster.
+
+## Data Quality Notes
+
+- **Column name variation across vintages.** CMS has used different column header names across file releases. The ETL's `_find_column()` function attempts to match against candidate lists (e.g., `SNF_CCN`, `SNF CCN`, `CCN`, `snf_ccn`, `Affiliate_CCN` for the CCN field). New header variations in future releases may require adding candidates to these lists.
+- **CCN normalization.** The `snf_ccn` field in the source data may appear as an integer without leading zeros. The ETL normalizes all CCN values to 6-character zero-padded strings via `normalize_ccn()`. Source rows where the CCN is blank or fails normalization are still included if a `snf_name` value is present â€” these records will lack a `snf_ccn` in the manifest and will not generate reverse links on SNF pages.
+- **File encoding.** The source CSV is read with `encoding="utf-8", errors="replace"`, meaning any non-UTF-8 bytes in SNF names or other text fields are replaced with the Unicode replacement character (U+FFFD) rather than causing a parse failure.
+- **No deduplication.** The ETL collects all rows matching a given ACO ID without deduplication. If the source data contains duplicate affiliation rows for the same ACO-SNF pair, both appear in the `snf_affiliates` array on the manifest.
+
+---
+
+The file write was blocked by permissions. Would you like to approve writing this to `etl/editorial/output/aco-snf-affiliates.md`?

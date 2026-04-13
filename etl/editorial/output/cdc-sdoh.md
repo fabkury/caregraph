@@ -1,0 +1,32 @@
+The file write requires your permission. Here's the methodology page content I've prepared:
+
+## Overview
+
+The CDC Social Determinants of Health (SDOH) dataset compiles county-level indicators drawn from the American Community Survey (ACS), Census Bureau, USDA, and other federal sources. It is published by the Centers for Disease Control and Prevention as part of the Agency for Healthcare Research and Quality (AHRQ) SDOH Database, accessible via data.cdc.gov (Socrata resource `i6u4-y3g4`). The indicator selection follows the CDC's Healthy People 2030 framework, covering five domains: economic stability, education and connectivity, healthcare access, neighborhood and built environment, and social and community context. Most measures use ACS 5-year estimates (currently 2017-2021), which smooth annual volatility but introduce a multi-year reporting lag.
+
+CareGraph extracts approximately 10 indicators from this dataset, organized into three display domains: Economic Stability (poverty rate, median household income, unemployment rate), Education & Connectivity (no high school diploma, broadband access, no internet access), and Housing & Demographics (crowded housing, single-parent households, age 65+). These measures contextualize health outcome data on county pages by quantifying the socioeconomic environment in which care is delivered and received.
+
+## Join Strategy
+
+Each row in the source CSV carries a `LocationID` field containing the county FIPS code. During ETL, `_find_column()` matches this field from a candidate list (`LocationID`, `locationid`, `CountyFIPS`, `FIPS`, `Location ID`, `location_id`) to handle column name variation across data vintages. The raw FIPS value is passed through `normalize_fips()`, which strips non-digit characters and left-pads to a 5-digit zero-padded string (2-digit state FIPS + 3-digit county FIPS). Rows that do not yield a valid 5-digit FIPS after normalization are discarded.
+
+The source data has one row per measure per county. The ETL classifies each row by matching `MeasureID` and `Short_Question_Text` against a pattern list (e.g., "poverty" or "below 150" maps to the `POVERTY` key), groups rows by FIPS, and pivots the matched measures into a dictionary stored under `data.sdoh` in the county JSON manifest. Each measure entry contains `value` (percentage or dollar amount, rounded to 2 decimal places), `label`, `domain`, and optionally `moe` (margin of error). The join is a left join from the county entity manifest: county pages at `/county/{FIPS}` without a matching SDOH record display no SDOH section rather than being omitted.
+
+## Known Limitations
+
+- **ACS 5-year estimates mask rapid changes.** Most SDOH measures use ACS 5-year estimates (e.g., 2017-2021), which smooth short-term fluctuations. Economic shocks, pandemic impacts, and other rapid shifts in local conditions are diluted across the 5-year window. Small-population counties rely entirely on 5-year estimates, which carry wider margins of error than the 1-year estimates available for counties with populations above 65,000.
+- **Temporal misalignment with health outcome data.** SDOH measures may use ACS data from a different reference period than the CMS or CDC health data they accompany on CareGraph county pages. For example, ACS 2017-2021 estimates (with known 2020 Census pandemic disruptions) may appear alongside 2023 health outcomes, creating a 2+ year gap between the social conditions measured and the health outcomes displayed.
+- **Indicator selection is not exhaustive.** The SDOH measures available reflect the CDC Healthy People 2030 framework and do not include all possible social determinants. Notable omissions include granular housing quality data, environmental pollution indices (e.g., PM2.5, lead exposure), local policy variables, and food desert status.
+- **County-level aggregation masks within-county variation.** County averages obscure substantial intra-county disparities, particularly in large or socioeconomically diverse counties where census tract-level SDOH conditions may range from very advantaged to very disadvantaged. A county with a moderate poverty rate may contain both affluent suburbs and deeply impoverished neighborhoods.
+- **Pattern-based measure classification may miss or misclassify rows.** The ETL identifies relevant measures by matching text fragments (e.g., "unemploy", "broadband") against `MeasureID` and `Short_Question_Text` fields. If CDC changes measure naming conventions in a future release, previously matched measures may fail to classify. Only the first match per key per county is retained; duplicate or variant measures for the same indicator are discarded.
+
+## Data Quality Notes
+
+- **Seven missing-value sentinels normalized to null.** The source CSV encodes missing values inconsistently as empty strings, `N\A`, `Not Available`, `.`, `*`, `-`, or `Too Few to Report`. The ETL `_try_float()` function converts all of these to null, and rows where the primary `Value` field resolves to null are excluded from the manifest entirely.
+- **Column name variation across releases.** CDC has changed column header casing and naming between data releases (e.g., `LocationID` vs. `locationid` vs `CountyFIPS`; `Value` vs. `Data_Value` vs. `data_value`). The ETL uses `_find_column()` with candidate lists and falls back to case-insensitive substring matching, avoiding hard-coded column name dependencies. If no FIPS column candidate matches, the entire dataset is skipped with a warning.
+- **Default year fallback.** If the source CSV lacks a recognizable year column (`Year`, `Data_Year`, `ReportYear`, `TimeFrame`), the ETL assigns a default vintage of `ACS 2017-2021`. This means the displayed data year may not reflect the actual ACS vintage if column naming changes in a future release.
+- **Non-UTF-8 byte handling.** The source CSV is loaded with `encoding="utf-8", errors="replace"`, substituting Unicode replacement characters (`U+FFFD`) for any non-UTF-8 bytes. This prevents ETL failures but may introduce replacement characters in county or measure name strings in rare cases.
+
+---
+
+Please approve the file write to save this to `etl/editorial/output/cdc-sdoh.md`.

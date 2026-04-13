@@ -13,7 +13,20 @@
   "hosp-hai": "ok",
   "hosp-unplanned-visits": "ok",
   "hosp-mspb": "ok",
-  "nh-penalties": "error",
+  "nh-penalties": "ok",
   "nh-deficiencies": "ok",
-  "nh-ownership": "ok"
+  "nh-ownership": "ok",
+  "aco-participants": "ok",
+  "aco-snf-affiliates": "ok",
+  "partd-drug-spending": "ok",
+  "partb-drug-spending": "ok",
+  "partb-discarded-units": "ok",
+  "inpatient-by-drg": "ok",
+  "hosp-cost-report": "ok",
+  "snf-cost-report": "ok",
+  "hac-reduction": "ok",
+  "aco-bene-county": "ok",
+  "cdc-sdoh": "ok",
+  "cms-chronic-conditions": "ok",
+  "nadac": "ok"
 }

@@ -1,0 +1,31 @@
+It seems file write permissions need to be granted. Here is the methodology page content:
+
+## Overview
+
+The Medicare Inpatient Hospitals by Provider and Service dataset is published by CMS as part of the Medicare Provider Utilization and Payment Data series, available on data.cms.gov. It reports hospital-level discharge counts, average covered charges, average total payments, and average Medicare payments for each MS-DRG (Medicare Severity Diagnosis Related Group) at each participating hospital. The current file covers calendar year 2023 discharges at hospitals paid under the Inpatient Prospective Payment System (IPPS). Each row represents one provider-DRG combination, with key fields including `Rndrng_Prvdr_CCN`, `DRG_Cd`, `DRG_Desc`, `Tot_Dschrgs`, `Avg_Submtd_Cvrd_Chrg`, `Avg_Tot_Pymt_Amt`, and `Avg_Mdcr_Pymt_Amt`.
+
+This dataset answers questions such as: how many Medicare fee-for-service discharges occurred nationally for a given DRG, which hospitals treat the highest volume of a specific DRG, how average Medicare payments for a DRG vary across hospitals, and how billed charges compare to actual payments. It is the primary source for DRG entity pages on CareGraph, where discharge volumes and payment statistics are aggregated across all reporting hospitals.
+
+## Join Strategy
+
+This dataset connects to DRG entity pages on CareGraph using the DRG code as the join key. The source `DRG_Cd` field contains values in the format `NNN - Description` (e.g., `470 - MAJOR HIP AND KNEE JOINT REPLACEMENT OR REATTACHMENT OF LOWER EXTREMITY W/O MCC`). During ETL, the `build_drgs()` function extracts the numeric portion by splitting on the hyphen delimiter and stripping non-digit characters to produce a clean 3-digit code (e.g., `470`). All source rows sharing the same extracted DRG code are grouped together and aggregated into a single DRG manifest at `site_data/drg/{drg_code}.json`. The manifest includes discharge-weighted average payments, total discharge counts, hospital counts, percentile-based payment range statistics, and a ranked list of the top 20 hospitals by discharge volume for that DRG. Each hospital entry in the manifest also carries the provider CCN, enabling cross-links to hospital entity pages.
+
+## Known Limitations
+
+- **IPPS hospitals only.** The dataset excludes Critical Access Hospitals, Maryland waiver hospitals, and specialty hospitals paid under other Medicare payment systems. This omits a substantial share of rural inpatient care and all Maryland hospitals, making the data non-representative of all Medicare inpatient discharges nationally.
+- **Cell-size suppression.** Provider-DRG combinations with fewer than 11 discharges are excluded per CMS cell-size suppression rules. This systematically removes low-volume services (e.g., rare surgical DRGs at community hospitals) and biases the dataset toward higher-volume provider-DRG pairs. Discharge totals on DRG entity pages therefore undercount true national volumes.
+- **Medicare fee-for-service only.** The dataset covers only Original Medicare (fee-for-service) beneficiaries. Medicare Advantage enrollees â€” who now represent over half of all Medicare beneficiaries in many markets â€” are excluded entirely, along with Medicaid, commercial, and uninsured patients.
+- **Charges are not prices.** The `Avg_Submtd_Cvrd_Chrg` field represents the hospital's billed charges, not what Medicare or patients actually paid. Hospital charges are set unilaterally and often exceed actual costs by 3-5x. Use `Avg_Tot_Pymt_Amt` for a closer approximation of actual payment.
+- **Outlier payments excluded.** The dataset does not include outlier payments â€” additional amounts Medicare pays when case costs exceed an outlier threshold. Hospitals with a high proportion of outlier cases may have true average payments substantially above the values reported here.
+- **DRG codes change annually.** CMS revises MS-DRG definitions each fiscal year. The same numeric code may describe different clinical populations across years due to reclassifications. Year-over-year comparisons require verifying that the DRG definition has not changed.
+
+## Data Quality Notes
+
+- **Dollar fields stored as strings with formatting characters.** The source CSV encodes `Avg_Submtd_Cvrd_Chrg`, `Avg_Tot_Pymt_Amt`, and `Avg_Mdcr_Pymt_Amt` as string values containing dollar signs, commas, and occasional percent signs. The ETL `_try_float()` function strips `$`, `,`, and `%` characters before parsing. Non-numeric values (including `N/A`, `Not Available`, `.`, `*`, and `-`) are converted to null in the JSON manifest.
+- **DRG code embedded in description field.** Some source file vintages combine the numeric DRG code and its description into a single `DRG_Cd` column in the format `NNN - Description`. The ETL splits on the first hyphen to extract the code and falls back to the `DRG_Desc` column for the description. If `DRG_Desc` is absent, the description portion after the hyphen is used instead.
+- **Column name variation across vintages.** CMS has changed column naming conventions between releases (e.g., `Rndrng_Prvdr_CCN` vs. `Provider_CCN`, `Tot_Dschrgs` vs. `Total_Discharges`). The ETL uses a candidate-list column matching strategy with exact, case-insensitive, and substring fallback matching to handle these variations without manual remapping.
+- **Discharge counts as floats in source.** The `Tot_Dschrgs` field is sometimes encoded as a floating-point string (e.g., `125.0`) rather than a plain integer. The ETL parses these via `_try_float()` followed by rounding to integer, which correctly handles both integer and float representations.
+
+---
+
+Would you like me to try writing this to the output file again, or would you prefer to save it to a different location?

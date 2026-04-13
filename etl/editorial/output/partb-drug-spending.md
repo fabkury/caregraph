@@ -1,0 +1,33 @@
+Here is the methodology page for the Medicare Part B Spending by Drug dataset:
+
+---
+
+## Overview
+
+The Medicare Part B Spending by Drug dataset is published by CMS on data.cms.gov as part of the Medicare Drug Spending dashboard. It reports total spending, claim counts, and per-dosage-unit costs for drugs covered under Medicare Part B â€” the physician-administered drug benefit. Part B covers drugs that are infused, injected, or inhaled in physician offices and hospital outpatient departments, billed under HCPCS J-codes and Q-codes. Oral and self-administered drugs are excluded from Part B and instead fall under Part D. Each row represents one drug identified by HCPCS code, brand name, and generic name. The current file covers the 2023 reporting year.
+
+This dataset answers questions such as: which physician-administered drugs account for the largest share of Medicare Part B drug spending, how total spending and claim volume compare across injectable biologics and infused therapies, and how biosimilar adoption is shifting spending away from reference biologics. Spending is heavily concentrated in oncology, ophthalmology (anti-VEGF agents), rheumatology (biologics), and immunology â€” the top 20 drugs by total spending account for the majority of Part B drug expenditures. Reimbursement is based on the Average Sales Price (ASP) plus a percentage markup (currently ASP+6% in non-sequestration years), so reported spending reflects ASP-based reimbursement rates, not acquisition cost or list price.
+
+## Join Strategy
+
+This dataset joins to drug entity pages on CareGraph using the generic name field (Gnrc_Name), uppercased and whitespace-trimmed during ETL. The `_load_partb_data()` function in `etl/build/build_drugs.py` reads the source CSV and groups rows by uppercased generic name. Each Part B row also carries an HCPCS code (HCPCS_Cd) and HCPCS description, which are preserved in the manifest as structured detail under `data.partb_spending.hcpcs_codes`. The join to drug entities is a string match on generic name â€” the same key used by the Part D spending dataset â€” so a drug entity page at `/drug/bevacizumab-bvzr` displays Part B spending alongside Part D spending when both datasets contain rows for that generic name. The join is a left join from Part D entities: only drugs that appear in the Part D dataset have entity pages, and Part B data is attached when a matching generic name exists. Drugs that appear only in Part B (with no Part D record) do not generate entity pages. The ETL aggregates total spending and total claims across all HCPCS codes for a given generic name, and stores per-HCPCS breakdowns with code, description, spending, and claim count.
+
+## Known Limitations
+
+- **Small-cell suppression.** Drugs with fewer than 11 claims in the reporting year are excluded entirely from the source file to protect patient privacy. This removes rare drugs, newly launched therapies, and drugs nearing market exit.
+- **Part B only â€” excludes oral and self-administered drugs.** This dataset covers only physician-administered drugs billed under HCPCS J-codes and Q-codes. Oral drugs, self-injected drugs (e.g., insulin pens), and retail prescriptions are not included â€” those fall under Part D.
+- **Medicare fee-for-service only.** Spending reflects Original Medicare (fee-for-service) claims. Drugs administered to Medicare Advantage enrollees are not included, as MA plans pay providers directly and do not generate fee-for-service claims. In markets with high MA penetration, this dataset understates total Medicare drug utilization.
+- **HCPCS-to-drug mapping is not one-to-one.** A single HCPCS code may cover multiple generic drugs or drug combinations (e.g., miscellaneous "not otherwise classified" J-codes). Conversely, a single drug may have multiple HCPCS codes for different dosage forms or administration routes. This complicates aggregation and may cause some spending to appear under umbrella categories.
+- **ASP-based reimbursement, not acquisition cost.** The average spending per dosage unit reflects the ASP+6% reimbursement rate, not the provider's actual acquisition cost or the drug's list price. For drugs where providers obtain 340B pricing or negotiate volume discounts, reported spending overstates the provider's cost.
+- **No geographic or provider-level detail.** This dataset is national-level only. It does not break spending down by state, hospital, or individual provider. Geographic variation in biosimilar adoption or drug utilization patterns is not visible.
+
+## Data Quality Notes
+
+- **Generic-name string matching is fragile.** The join key is an uppercased generic name string, not a coded identifier like NDC or RxCUI. Spelling variations, salt-form differences (e.g., "BEVACIZUMAB-BVZR" vs. "BEVACIZUMAB"), and combination drug naming conventions can cause the same molecule to fail matching across Part B and Part D datasets or to appear as separate entities.
+- **Numeric fields may contain non-numeric values.** The source CSV encodes suppressed or missing values as text markers (empty strings, "N/A", "Not Available", ".", "*", "-"). The ETL `_try_float()` function coerces these to null. Fields with dollar signs, commas, and percent signs are stripped before parsing.
+- **HCPCS description text varies across vintages.** CMS periodically updates HCPCS code descriptions, so the same code may carry slightly different description text across reporting years. The ETL stores the description as-is from the source file without normalization.
+- **Part B entity coverage is a subset of drug entity pages.** Drug entity pages are generated from the Part D dataset as the primary entity list. Part B data is attached only when a matching generic name exists in Part D. Drugs billed exclusively under Part B (with no Part D counterpart) do not have entity pages on CareGraph.
+
+---
+
+The write to `etl/editorial/output/partb-drug-spending.md` was blocked by permissions. Would you like to approve the write, or would you prefer to copy the content above manually?

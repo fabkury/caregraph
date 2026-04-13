@@ -1,0 +1,25 @@
+## Overview
+
+The Skilled Nursing Facility Cost Report dataset contains facility-level financial and operational data self-reported by skilled nursing facilities to CMS via the Healthcare Cost Report Information System (HCRIS). Freestanding SNFs file on CMS Form 2540-10; hospital-based SNF units report as part of CMS Form 2552-10 (the hospital cost report). The dataset covers approximately 15,000 Medicare-certified SNFs and includes line items from multiple worksheets spanning revenue, expenses, balance sheet data, patient days by payer, staffing, and bed counts. Cost reports are filed annually on each facility's own fiscal year, meaning the dataset for any given federal fiscal year contains reports with fiscal year end dates spanning a 12-month window.
+
+CareGraph derives key performance metrics from raw worksheet line items: operating margin, cost per resident day, occupancy rate (from available bed-days and total patient days on Worksheet S-3), and Medicare/Medicaid day shares. These metrics enable comparisons of financial viability, payer mix exposure, and operational efficiency across SNFs. The data supports questions such as which facilities operate at negative margins, how Medicaid-heavy payer mix correlates with financial distress, and how staffing cost ratios vary by facility size and ownership type.
+
+## Join Strategy
+
+Each cost report record is keyed by the facility's CMS Certification Number (CCN), a 6-character zero-padded string (e.g., `055001`). CareGraph normalizes CCNs to 6 characters with leading-zero preservation during ETL. The CCN joins cost report financial data to the SNF entity page, where it is displayed alongside quality measures, staffing data, and penalty information from other CMS datasets. For hospital-based SNF units, the CCN identifies the SNF subunit rather than the parent hospital, so the join is SNF-specific. When a facility files multiple cost reports for overlapping periods (e.g., an initial filing and an amended filing), CareGraph retains the most recent submission per fiscal year end date, determined by the latest `FY_END_DT` and processing date combination.
+
+## Known Limitations
+
+- **Fiscal year misalignment.** Each SNF defines its own fiscal year. Comparing facilities labeled under the same reporting year can mix time periods offset by up to 11 months. CareGraph groups cost reports by fiscal year end date, not calendar year.
+- **Freestanding vs. hospital-based form differences.** Freestanding SNFs (Form 2540-10) and hospital-based SNF units (Form 2552-10) use different worksheet structures. Field mappings differ between the two forms, and certain line items (e.g., overhead allocation, capital costs) are not directly comparable without normalization that CareGraph does not currently perform.
+- **Low audit rate.** Cost reports are self-reported and only a small fraction undergo CMS audit in any given year. Common reporting errors include misallocation of costs between nursing care and ancillary services and inconsistent treatment of contracted services.
+- **Late filings and amendments.** Approximately 5â€“10% of facilities file late or submit amendments after initial filing. The dataset at any point in time may be missing the most recent reports for these facilities, and amended reports may supersede data that was previously displayed.
+- **Medicaid day share inaccuracy.** For dual-certified facilities, Medicaid patient day counts can be inaccurate due to differences in how states report Medicaid-covered days. Facilities with high Medicaid day shares may show negative operating margins that reflect payer mix rather than operational inefficiency.
+- **No Medicare Advantage granularity.** Cost reports aggregate Medicare days without distinguishing between fee-for-service Medicare and Medicare Advantage. As MA penetration grows, the Medicare day count increasingly blends two fundamentally different reimbursement structures.
+
+## Data Quality Notes
+
+- **Numeric fields stored as strings.** Several financial line items arrive from HCRIS as string-encoded numerals. CareGraph casts these to numeric types during ETL, treating blank and non-numeric values as null. Facilities that report zero and facilities that leave a field blank are indistinguishable after this conversion for some worksheet lines.
+- **High null rates on ancillary cost lines.** Worksheet line items for specialized services (e.g., pharmacy, therapy sub-breakdowns) have null rates exceeding 30% across the dataset, particularly among smaller facilities that do not operate these departments in-house.
+- **Date format inconsistencies.** Fiscal year begin and end dates (`FY_BGN_DT`, `FY_END_DT`) appear in mixed formats (`MM/DD/YYYY` and `YYYY-MM-DD`) across HCRIS vintages. CareGraph normalizes all dates to ISO 8601 (`YYYY-MM-DD`) during ETL.
+- **Occupancy rate outliers.** A small number of facilities report total patient days exceeding available bed-days on Worksheet S-3, producing calculated occupancy rates above 100%. CareGraph caps displayed occupancy at 100% and flags these records rather than discarding them.
