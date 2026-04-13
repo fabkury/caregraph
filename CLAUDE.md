@@ -2,11 +2,11 @@
 
 ## What is CareGraph?
 
-CareGraph is a free, open-source, ad-free static website that unifies 100+ publicly available CMS (Centers for Medicare & Medicaid Services) datasets into a single richly interlinked exploration tool. It precomputes cross-dataset joins offline and serves the results as static HTML pages with JSON data manifests. The full product specification lives at `docs/cms-unified-vbc-tool-spec.md`.
+CareGraph is a free, open-source, ad-free static website that unifies 30 publicly available CMS (Centers for Medicare & Medicaid Services) and CDC datasets into a single richly interlinked exploration tool. It precomputes cross-dataset joins offline and serves the results as static HTML pages with JSON data manifests. The full product specification lives at `docs/cms-unified-vbc-tool-spec.md`.
 
-## v1 starting entity subset
+## Entity types
 
-The first public release covers **4 entity types**: Hospitals, SNFs (Skilled Nursing Facilities), Counties, and ACOs (Accountable Care Organizations). Each has a canonical page at a stable URL (e.g., `/hospital/123456`, `/county/06037`). Remaining entity types (Clinicians, Drugs, Conditions, DRGs, etc.) are v1.x follow-on.
+The site covers **7 entity types**: Hospitals, SNFs (Skilled Nursing Facilities), Counties, ACOs (Accountable Care Organizations), Drugs, Conditions, and DRGs. Each has a canonical page at a stable URL (e.g., `/hospital/123456`, `/county/06037`, `/drug/metformin`).
 
 ## Directory layout
 
@@ -99,13 +99,11 @@ A GitHub Actions workflow (`.github/workflows/deploy.yml`) automatically deploys
 - **Data files:** JSON manifests in `site_data/`, raw downloads in `data/raw/` named `{dataset_id}_{YYYY-MM-DD}.csv`.
 - **Join keys:** CCN = 6-char zero-padded string. FIPS = 5-digit zero-padded string. NPI = 10-digit string.
 
-## What to work on next (after M1)
+## What to work on next
 
-M2 — Four-entity spine (weeks 5–10):
-1. Add all remaining datasets for Hospitals, SNFs, Counties, and ACOs (see spec §6.1 for the full list per entity type).
-2. Add SNF and ACO entity pages with full dataset joins.
+Potential future work:
+1. Add more CMS datasets to existing entity types.
+2. Add new entity types (Clinicians, etc.).
 3. Implement year toggle on entity pages (ETL ships all available vintages).
-4. Build cross-links between the 4 entity types (neighborhood manifests).
-5. Build global search index (precomputed JSON blob).
-6. Build Explore browser pages with Table mode (filterable, sortable data grid).
-7. Ensure all 10 analytical use cases in spec §9 that are answerable within these 4 entities are reachable via navigation.
+4. Add DuckDB-WASM for in-browser SQL querying (v2).
+5. Add Leaflet-based maps.

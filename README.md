@@ -5,7 +5,7 @@
 
 **Public CMS Data**
 
-CareGraph is a free, open-source, ad-free website that unifies 100+ publicly available CMS datasets into a single richly interlinked exploration tool. It serves value-based care leaders, researchers, journalists, and clinicians who need scorecards, benchmarks, filterable tables, full methodology, and downloadable data -- all cross-linked through the identifiers (CCN, NPI, TIN, FIPS) that tie Medicare's data ecosystem together.
+CareGraph is a free, open-source, ad-free website that unifies 30 publicly available CMS and CDC datasets into a single richly interlinked exploration tool. It serves value-based care leaders, researchers, journalists, and clinicians who need scorecards, benchmarks, filterable tables, full methodology, and downloadable data -- all cross-linked through the identifiers (CCN, NPI, TIN, FIPS) that tie Medicare's data ecosystem together.
 
 ## How it works
 
@@ -19,12 +19,15 @@ ETL (Python + DuckDB)  -->  site_data/ (JSON manifests)
                          git push  -->  GitHub Pages  -->  caregraph.org
 ```
 
-## Current scope (v1 starting subset)
+## Current scope
 
 - **Hospitals** -- Hospital General Information, HVBP, HRRP, HAC, HCAHPS, MSPB, Cost Reports
-- **SNFs / Nursing Homes** -- SNF VBP, MDS, PBJ, Penalties, Cost Reports
-- **Counties** -- Geographic Variation, Chronic Conditions, SDOH overlays
-- **ACOs** -- MSSP, REACH, Participants, Beneficiary by County
+- **SNFs / Nursing Homes** -- Provider Info, MDS Quality, Penalties, Deficiencies, Ownership, Cost Reports
+- **Counties** -- Geographic Variation, Chronic Conditions, CDC PLACES, SDOH
+- **ACOs** -- MSSP Performance, Participants, SNF Affiliates, Beneficiary by County
+- **Drugs** -- Part D Spending, Part B Spending, Part B Discarded Units, NADAC
+- **Conditions** -- CDC PLACES county-level prevalence
+- **DRGs** -- Medicare Inpatient by Provider and Service
 
 ## Quick start
 
@@ -44,7 +47,7 @@ git add site/dist/ && git commit -m "Rebuild site" && git push
 
 ## Full specification
 
-See [docs/cms-unified-vbc-tool-spec.md](docs/cms-unified-vbc-tool-spec.md) for the complete product specification.
+See [docs/old/cms-unified-vbc-tool-spec.md](docs/old/cms-unified-vbc-tool-spec.md) for the original product specification.
 
 ## How to cite
 
