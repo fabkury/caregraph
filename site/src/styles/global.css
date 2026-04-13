@@ -89,7 +89,19 @@ h1, h2, h3, h4, h5, h6 {
   display: flex;
   align-items: center;
   gap: 1.5rem;
-  flex-wrap: wrap;
+}
+
+.nav-toggle {
+  display: none;
+  background: none;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  padding: 0.3rem 0.5rem;
+  cursor: pointer;
+  color: var(--color-text);
+  font-size: 1.25rem;
+  line-height: 1;
+  margin-left: auto;
 }
 
 .nav-links a {
@@ -438,8 +450,52 @@ h1, h2, h3, h4, h5, h6 {
     font-size: 1.75rem;
   }
 
+  .nav-toggle {
+    display: block;
+  }
+
+  .nav {
+    height: auto;
+    min-height: var(--nav-height);
+    flex-wrap: wrap;
+    padding: 0.5rem 1rem;
+  }
+
+  .nav-inner {
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
   .nav-links {
-    gap: 0.75rem;
+    display: none;
+    flex-direction: column;
+    width: 100%;
+    gap: 0;
+    order: 10;
+    border-top: 1px solid var(--color-border);
+    padding-top: 0.5rem;
+  }
+
+  .nav-links.open {
+    display: flex;
+  }
+
+  .nav-links a {
+    padding: 0.5rem 0;
+    border-bottom: 1px solid var(--color-border-light);
+    font-size: 1rem;
+  }
+
+  .nav-links a:last-child {
+    border-bottom: none;
+  }
+
+  .nav-search {
+    order: 9;
+  }
+
+  .nav-search input {
+    width: 120px;
   }
 
   .kv-grid {
@@ -466,6 +522,26 @@ h1, h2, h3, h4, h5, h6 {
 
   .entity-tiles {
     grid-template-columns: 1fr;
+  }
+
+  .demo-bar-row {
+    grid-template-columns: 1fr 60px;
+    gap: 0.25rem;
+  }
+
+  .demo-bar-label {
+    text-align: left;
+    grid-column: 1 / -1;
+  }
+
+  .composition-row {
+    grid-template-columns: 1fr 50px 50px;
+    gap: 0.25rem;
+  }
+
+  .composition-label {
+    text-align: left;
+    grid-column: 1 / -1;
   }
 }
 

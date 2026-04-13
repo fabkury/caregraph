@@ -24,6 +24,7 @@ const { title, description = 'CareGraph — Public CMS Data' } = Astro.props;
   <nav class="nav" role="navigation" aria-label="Main navigation">
     <div class="nav-inner">
       <a href="/" class="nav-logo">CareGraph</a>
+      <button class="nav-toggle" aria-label="Toggle menu" aria-expanded="false">&#9776;</button>
       <div class="nav-links">
         <a href="/">Home</a>
         <a href="#">Explore</a>
@@ -53,6 +54,16 @@ const { title, description = 'CareGraph — Public CMS Data' } = Astro.props;
             window.location.href = `/search?q=${encodeURIComponent(q)}`;
           }
         }
+      });
+    }
+
+    const navToggle = document.querySelector('.nav-toggle') as HTMLButtonElement | null;
+    const navLinks = document.querySelector('.nav-links') as HTMLElement | null;
+    if (navToggle && navLinks) {
+      navToggle.addEventListener('click', () => {
+        const isOpen = navLinks.classList.toggle('open');
+        navToggle.setAttribute('aria-expanded', String(isOpen));
+        navToggle.innerHTML = isOpen ? '&#10005;' : '&#9776;';
       });
     }
   </script>
