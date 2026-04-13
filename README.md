@@ -45,10 +45,6 @@ cd site && npm install && npm run build
 git add site/dist/ && git commit -m "Rebuild site" && git push
 ```
 
-## Full specification
-
-See [docs/old/cms-unified-vbc-tool-spec.md](docs/old/cms-unified-vbc-tool-spec.md) for the original product specification.
-
 ## How to cite
 
 > CareGraph. (2026). *CareGraph: Unified CMS data exploration tool.* https://caregraph.org. Source code: https://github.com/fabkury/caregraph.
