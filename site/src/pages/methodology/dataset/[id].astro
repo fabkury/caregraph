@@ -1,19 +1,8 @@
 ---
 import BaseLayout from '../../../layouts/BaseLayout.astro';
+import { datasetRegistry } from '../../../lib/dataset-registry';
 import fs from 'node:fs';
 import path from 'node:path';
-
-// Dataset registry for display names and metadata
-const datasetRegistry: Record<string, { name: string; entity: string; vintage: string }> = {
-  'xubh-q36u': { name: 'Hospital General Information', entity: 'hospital', vintage: 'FY2026' },
-  'hrrp': { name: 'Hospital Readmissions Reduction Program', entity: 'hospital', vintage: 'FY2026' },
-  'hvbp-tps': { name: 'Hospital Value-Based Purchasing TPS', entity: 'hospital', vintage: 'FY2026' },
-  'nh-provider-info': { name: 'Nursing Home Provider Info', entity: 'snf', vintage: 'Mar 2026' },
-  'nh-quality-mds': { name: 'SNF Quality Measures (MDS)', entity: 'snf', vintage: 'Mar 2026' },
-  'mssp-performance': { name: 'MSSP ACO Performance PY2024', entity: 'aco', vintage: 'PY2024' },
-  'geo-var-county': { name: 'Medicare Geographic Variation by County', entity: 'county', vintage: '2014-2023' },
-  'cdc-places': { name: 'CDC PLACES County-Level Data', entity: 'county', vintage: '2023 Release' },
-};
 
 export function getStaticPaths() {
   // Read editorial output files from site_data/editorial/
@@ -38,8 +27,8 @@ export function getStaticPaths() {
 const { content, datasetId } = Astro.props;
 const { id } = Astro.params;
 
-// Get dataset display info
-const dsInfo = datasetRegistry[datasetId] || { name: datasetId, entity: 'unknown', vintage: 'unknown' };
+// Get dataset display info from shared registry
+const dsInfo = datasetRegistry[datasetId] || { name: datasetId, entity: 'unknown', vintage: 'unknown', role: 'enrichment', source: 'CMS' };
 
 // Read index.json for provenance metadata
 const siteDataDir = path.resolve(process.cwd(), '..', 'site_data');
@@ -60,6 +49,13 @@ for (const [entityType, entityInfo] of Object.entries(entities) as [string, any]
   if (entityInfo.enriched_with?.includes(datasetId)) {
     rowCount = entityInfo.enriched_count?.toLocaleString() || '—';
   }
+}
+
+// Role badge styling
+function roleBadgeClass(role: string): string {
+  if (role === 'base') return 'badge-role-base';
+  if (role === 'cross-link') return 'badge-role-crosslink';
+  return 'badge-role-enrichment';
 }
 
 // Simple markdown-to-HTML conversion for the editorial content
@@ -162,6 +158,10 @@ const renderedContent = markdownToHtml(content);
       <dd><code>{datasetId}</code></dd>
       <dt>Entity Type</dt>
       <dd><span class={`badge badge-${dsInfo.entity}`}>{dsInfo.entity}</span></dd>
+      <dt>Role</dt>
+      <dd><span class={`badge ${roleBadgeClass(dsInfo.role)}`}>{dsInfo.role}</span></dd>
+      <dt>Source</dt>
+      <dd>{dsInfo.source}</dd>
       <dt>Vintage</dt>
       <dd>{dsInfo.vintage}</dd>
       <dt>Entity Count</dt>
@@ -183,3 +183,29 @@ const renderedContent = markdownToHtml(content);
     </p>
   </div>
 </BaseLayout>
+
+<style>
+  .badge-role-base {
+    background: #1a7f37;
+    color: white;
+    font-size: 0.7rem;
+    padding: 0.1rem 0.4rem;
+    border-radius: 3px;
+  }
+
+  .badge-role-enrichment {
+    background: #0969da;
+    color: white;
+    font-size: 0.7rem;
+    padding: 0.1rem 0.4rem;
+    border-radius: 3px;
+  }
+
+  .badge-role-crosslink {
+    background: #8250df;
+    color: white;
+    font-size: 0.7rem;
+    padding: 0.1rem 0.4rem;
+    border-radius: 3px;
+  }
+</style>

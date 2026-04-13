@@ -1,0 +1,25 @@
+## Overview
+
+The Timely and Effective Care â€” Hospital dataset is published by the Centers for Medicare & Medicaid Services (CMS) as part of the Hospital Compare program, now integrated into the Care Compare initiative. It reports hospital-level performance on process-of-care measures that track whether hospitals deliver specific clinical interventions within recommended timeframes. The dataset covers Medicare-certified acute care hospitals across the United States and its territories.
+
+The current measure set is dominated by emergency department (ED) throughput measures â€” such as OP-18 (median time from ED arrival to ED departure for admitted patients) and OP-22 (left without being seen) â€” and outpatient imaging efficiency measures (OP-8, OP-10, OP-13, OP-14). CMS has retired many of the original "core measures" for acute myocardial infarction (AMI), heart failure (HF), and pneumonia over successive reporting cycles. Each row represents a single measure for a single hospital in a given reporting period, typically spanning 12 months with a reporting lag of approximately 9â€“12 months. This dataset answers questions about how quickly hospitals deliver time-sensitive care and how efficiently they use outpatient imaging resources, but it does not directly measure patient outcomes.
+
+## Join Strategy
+
+CareGraph joins this dataset to hospital entity pages using the Facility ID field, which corresponds to the CMS Certification Number (CCN). The CCN is a 6-character zero-padded string (e.g., `010001`). During ETL, the Facility ID is normalized to ensure consistent zero-padding to 6 digits, as some source rows may contain unpadded numeric values. Each hospital entity page on CareGraph displays all available measures for that facility, matched by exact CCN string comparison. Because the dataset contains multiple rows per hospital (one per measure), the join produces a one-to-many relationship between the hospital entity and its measure-level records.
+
+## Known Limitations
+
+- **Small-volume suppression:** Hospitals with fewer than 25 cases for a given measure have their scores suppressed, displayed as "Not Available" or accompanied by CMS footnote codes. This disproportionately affects rural and low-volume hospitals, reducing comparability across facility sizes.
+- **Critical access hospital exclusion:** ED throughput measures (OP-18, OP-22) exclude critical access hospitals and hospitals without an emergency department. This systematically removes the smallest rural hospitals from ED-related comparisons and biases aggregate statistics toward larger, urban facilities.
+- **Retired measures and time-series gaps:** CMS has retired many original core measures (AMI, HF, pneumonia process measures) across reporting cycles. Direct year-over-year comparisons are unreliable for retired or redefined measures, and historical data may reference measure IDs that no longer appear in current releases.
+- **Medicare fee-for-service population only:** Performance data reflects care delivered to Medicare fee-for-service beneficiaries. Medicare Advantage enrollees, Medicaid-only patients, commercially insured patients, and the uninsured are not represented, which can skew results for hospitals whose patient mix is weighted toward non-FFS populations.
+- **Reporting lag:** Data typically reflects a reporting period that ended 9â€“12 months before publication. Current hospital performance may differ materially from published scores.
+- **Mixed score semantics:** The `Score` field contains percentages, median minutes, and ratios depending on the measure. Some measures are "higher is better" (e.g., fibrinolytic therapy administration rates) while others are "lower is better" (e.g., ED median wait times). The directionality is encoded in measure metadata, not in the score value itself, making naive cross-measure comparisons misleading.
+
+## Data Quality Notes
+
+- **Score field is stored as a string:** The `Score` column contains a mix of numeric values and text entries such as "Not Available," footnote markers, and suppression codes. CareGraph's ETL parses numeric scores where possible and preserves non-numeric entries as null values with the original text retained in a separate footnote field.
+- **Heterogeneous units across measures:** Because scores represent percentages, minutes, or ratios depending on the measure ID, the `Score` field has no single unit of measurement. The ETL does not normalize scores across measure types; consumers must reference the `Measure ID` to interpret any given value correctly.
+- **Footnote codes encode suppression reasons:** CMS uses numeric footnote codes (e.g., 1 = fewer than 25 cases, 5 = results not available for this reporting period) that appear in a dedicated footnote field. Missing or null footnote values indicate standard reporting with no suppression applied.
+- **Measure start and end date fields** use `MM/DD/YYYY` string format in the source data. The ETL normalizes these to ISO 8601 (`YYYY-MM-DD`) during ingestion. Rows with missing or malformed date ranges are retained but flagged during validation.

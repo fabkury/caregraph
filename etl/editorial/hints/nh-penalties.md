@@ -1,0 +1,5 @@
+- Nursing home penalties include two types: civil money penalties (CMPs, i.e., fines) and denial of payment for new admissions (DPNAs). CMPs can be per-day or per-instance; per-day penalties accrue until the deficiency is corrected, which can result in large cumulative fines for slow-to-remediate facilities.
+- The absence of penalty records for a facility means no federal penalties were imposed — it does not indicate that the facility has never had deficiencies, as many deficiencies result in plans of correction without financial penalties.
+- State-imposed penalties and sanctions are not included in this federal dataset. Some states have their own penalty structures that may be more or less severe than CMS penalties.
+- CMS has increasingly used CMPs as an enforcement tool since 2016, so the volume of penalty records has grown over time — trend analysis must account for this policy shift, not just changes in facility quality.
+- Penalty amounts do not account for the size of the facility. A $10,000 fine represents a very different financial impact for a 30-bed rural SNF versus a 300-bed urban facility.

@@ -1,0 +1,4 @@
+- The ACO SNF Affiliate list identifies skilled nursing facilities that have agreed to a preferred relationship with an MSSP ACO under the 3-day SNF waiver program. Under this waiver, ACO beneficiaries can be admitted directly to an affiliated SNF without the standard 3-day prior inpatient hospital stay requirement.
+- Not all MSSP ACOs participate in the SNF 3-day waiver program — only those that have applied and been approved. ACOs without affiliates in this dataset may still have beneficiaries who use SNFs, but without the waiver benefit.
+- Affiliation is at the ACO-to-SNF level, not hospital-to-SNF. A single ACO may have dozens of affiliated SNFs across its service area. The affiliation does not imply common ownership or exclusive referral arrangements.
+- The affiliate list does not indicate how many beneficiaries actually used the 3-day waiver to access each SNF. It is a roster of eligible facilities, not a utilization report.

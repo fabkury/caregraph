@@ -1,0 +1,5 @@
+- Timely and Effective Care measures are process-of-care indicators (e.g., median time from ED arrival to ED departure, fibrinolytic therapy within 30 minutes) rather than outcome measures — high compliance does not necessarily mean better patient outcomes.
+- CMS has retired many of the original "core measures" (AMI, HF, pneumonia) over the years; the current measure set is dominated by ED throughput (OP-18, OP-22) and outpatient imaging efficiency measures (OP-8, OP-10, OP-13, OP-14).
+- Critical access hospitals and hospitals without an emergency department are excluded from ED throughput measures, which systematically removes the smallest rural hospitals from those comparisons.
+- The "score" field contains a mix of percentages, median minutes, and ratios depending on the measure — consumers frequently misinterpret these by comparing raw numbers across different measure types.
+- Some measures report "higher is better" and others "lower is better"; the direction is indicated by the measure metadata, not the score value itself.

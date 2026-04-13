@@ -1,0 +1,6 @@
+- Hospital cost reports (HCRIS — Healthcare Cost Report Information System) are self-reported annual financial statements filed on CMS Form 2552-10. They are subject to CMS audit but only a fraction are audited in any given year — unaudited reports may contain errors or strategic classifications.
+- Fiscal years are hospital-defined and do not necessarily align with the calendar year or federal fiscal year; comparing hospitals with different fiscal year ends on "the same year's" cost report can mix time periods by up to 11 months.
+- Key derived metrics (operating margin, cost per discharge, occupancy rate) are not in the raw data — they must be calculated from financial line items across multiple worksheets (S-2, S-3, G-3, etc.). The specific worksheet cells used for each metric should be documented.
+- Hospital-based SNF and home health units report on the same cost report as the parent hospital. Separating institutional-level costs from departmental-level costs requires careful extraction from supplemental worksheets.
+- Uncompensated care costs (Worksheet S-10) are used for Medicare DSH (Disproportionate Share Hospital) payment calculations and have been more closely scrutinized since FY2014, but reporting quality still varies.
+- Critical access hospitals file CMS Form 2552-96 (not 2552-10) with a different worksheet structure, so field mappings differ.

@@ -1,0 +1,31 @@
+It looks like the write permission was denied. Here's the methodology page content:
+
+## Overview
+
+The Nursing Home Health Deficiencies dataset is published by the Centers for Medicare & Medicaid Services (CMS) through the Care Compare program (formerly Nursing Home Compare) and is available as a public-use file on data.cms.gov (dataset identifier: `r5ix-sfxw`). It contains one row per deficiency citation issued to a Medicare- and Medicaid-certified skilled nursing facility (SNF) during state survey agency inspections conducted on behalf of CMS. Each record carries approximately 15 fields including the deficiency tag number (F-tag), tag description, scope/severity code, survey date, and correction date. The dataset covers the most recent three years of standard health surveys plus any complaint-driven survey citations within that window.
+
+This dataset answers questions such as: How many deficiency citations has a facility received in the past three years? What specific federal regulations has it been cited for violating? How severe are its citations on the CMS scope/severity grid? Has a facility had citations at the level of actual harm or immediate jeopardy to residents? How does its deficiency citation volume compare to peer facilities in the same state? It is the primary source for inspection-related compliance data displayed on CareGraph SNF entity pages.
+
+## Join Strategy
+
+Each deficiency record is joined to a CareGraph SNF entity page using the Federal Provider Number field, which is the facility's CMS Certification Number (CCN). The CCN is a 6-character string, zero-padded on the left (e.g., `015001`). During ETL, the join key is normalized by stripping leading and trailing whitespace and enforcing zero-padding to six digits via the `normalize_ccn` function. Because each facility can have multiple deficiency citations, the join produces a one-to-many relationship: all matching deficiency records are collected into a `deficiencies` array on the SNF entity page manifest. SNF pages without matching deficiency records display no deficiency section rather than showing an empty table. Source rows with CCN values that do not match any existing SNF entity page are excluded from the site build. The CCN format is validated during the ETL build step, and malformed keys are reported in the build log.
+
+## Known Limitations
+
+- **State surveyor variation.** Deficiency counts are heavily influenced by state survey agency practices. Some states cite significantly more deficiencies per inspection on average than others. Raw deficiency counts are not comparable across states without adjusting for state-level surveyor behavior, and CareGraph does not apply such an adjustment.
+- **Special Focus Facility inspection frequency.** Facilities under the CMS Special Focus Facility (SFF) designation receive inspections every 6 months rather than the standard 9â€“15 month cycle. SFF facilities therefore accumulate roughly twice as many inspection events per year as non-SFF facilities, generating more deficiency records even at equivalent quality levels. Elevated deficiency counts for SFF facilities partly reflect inspection frequency, not solely facility performance.
+- **F-tag numbering discontinuity.** The F-tag (deficiency tag number) numbering system was completely revised in November 2017 as part of the CMS "mega-rule" regulatory overhaul. Historical comparisons of specific F-tag citations across this boundary are invalid without a tag-mapping crosswalk. The dataset does not include a crosswalk or indicate which numbering scheme applies to a given record.
+- **Complaint survey timing.** Standard health inspections occur on a target 12-month cycle (range: 9â€“15 months), but complaint investigations can occur at any time and generate additional deficiency citations outside the regular survey cycle. A spike in deficiency counts may reflect complaint-driven inspections rather than a deterioration found during routine surveys.
+- **Scope/severity threshold for enforcement.** Only deficiency citations at scope/severity level G or above (actual harm or immediate jeopardy) trigger automatic CMS enforcement actions such as civil monetary penalties or denial of payment for new admissions. Citations at levels A through F (no actual harm) may indicate regulatory noncompliance but do not by themselves result in enforcement. Treating all deficiency citations equally overstates facility risk.
+- **Three-year lookback window.** The dataset includes only the most recent three years of surveys. Facilities with a clean record may have had significant deficiency histories prior to the lookback window. Conversely, a facility with many citations may have already remediated the underlying conditions.
+
+## Data Quality Notes
+
+- **Scope/severity code as a single-character string.** The scope/severity field contains a single letter (A through L) representing the intersection of scope (isolated, pattern, widespread) and severity (no actual harm through immediate jeopardy) on the CMS grid. The ETL retains this field as a string; consumers must map the letter to the corresponding scope and severity dimensions using the CMS scope/severity grid definition.
+- **Date format inconsistencies.** Survey date and correction date fields in the source data use mixed formats (MM/DD/YYYY and YYYY-MM-DD). The ETL reads these fields as strings and stores them as-is in the JSON manifest. Consumers should parse dates defensively.
+- **Missing correction dates.** The correction date field is blank for deficiencies that have not yet been corrected or verified as corrected at the time of data publication. A null correction date does not distinguish between an open deficiency and a corrected deficiency whose correction date was not recorded.
+- **Tag description truncation.** Deficiency description fields in the source CSV are sometimes truncated versions of the full regulatory text. The `tag` field (F-tag number) is the authoritative identifier; consumers needing the complete regulatory language should reference the CMS State Operations Manual Appendix PP using the F-tag number.
+
+---
+
+Would you like me to try writing the file again, or would you prefer to save it manually?

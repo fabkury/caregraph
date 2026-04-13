@@ -6,5 +6,14 @@
   "mssp-performance": "ok",
   "hrrp": "ok",
   "hvbp-tps": "ok",
-  "cdc-places": "ok"
+  "cdc-places": "ok",
+  "hosp-timely-care": "ok",
+  "hosp-complications": "ok",
+  "hosp-hcahps": "ok",
+  "hosp-hai": "ok",
+  "hosp-unplanned-visits": "ok",
+  "hosp-mspb": "ok",
+  "nh-penalties": "error",
+  "nh-deficiencies": "ok",
+  "nh-ownership": "ok"
 }

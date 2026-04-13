@@ -1,5 +1,7 @@
 ---
 import BaseLayout from '../../layouts/BaseLayout.astro';
+import { datasetRegistry, entityLabels, entityOrder } from '../../lib/dataset-registry';
+import type { DatasetInfo } from '../../lib/dataset-registry';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -19,51 +21,74 @@ if (fs.existsSync(editorialDir)) {
   editorialFiles = fs.readdirSync(editorialDir).filter((f: string) => f.endsWith('.md'));
 }
 
-// Dataset registry — maps dataset_id to display info
-const datasetRegistry: Record<string, { name: string; entity: string; vintage: string }> = {
-  'xubh-q36u': { name: 'Hospital General Information', entity: 'hospital', vintage: 'FY2026' },
-  'hrrp': { name: 'Hospital Readmissions Reduction Program', entity: 'hospital', vintage: 'FY2026' },
-  'hvbp-tps': { name: 'Hospital Value-Based Purchasing TPS', entity: 'hospital', vintage: 'FY2026' },
-  'nh-provider-info': { name: 'Nursing Home Provider Info', entity: 'snf', vintage: 'Mar 2026' },
-  'nh-quality-mds': { name: 'SNF Quality Measures (MDS)', entity: 'snf', vintage: 'Mar 2026' },
-  'mssp-performance': { name: 'MSSP ACO Performance PY2024', entity: 'aco', vintage: 'PY2024' },
-  'geo-var-county': { name: 'Medicare Geographic Variation by County', entity: 'county', vintage: '2014-2023' },
-  'cdc-places': { name: 'CDC PLACES County-Level Data', entity: 'county', vintage: '2023 Release' },
-};
+// Build lookup for row counts
+function getRowCount(id: string): string {
+  const entities = indexData.entities || {};
+  for (const [entityType, entityInfo] of Object.entries(entities) as [string, any][]) {
+    if (entityInfo.dataset_id === id) {
+      return entityInfo.count?.toLocaleString() || '—';
+    }
+    if (entityInfo.enriched_with?.includes(id)) {
+      return entityInfo.enriched_count?.toLocaleString() || '—';
+    }
+  }
+  return '—';
+}
 
-// Build table rows
+// Group datasets by entity type
 interface DatasetRow {
   id: string;
   name: string;
   entity: string;
   vintage: string;
+  role: string;
+  source: string;
   rowCount: string;
   hasMethodology: boolean;
 }
 
-const datasets: DatasetRow[] = Object.entries(datasetRegistry).map(([id, info]) => {
-  // Try to find row count from index.json
-  let rowCount = '—';
-  const entities = indexData.entities || {};
-  for (const [entityType, entityInfo] of Object.entries(entities) as [string, any][]) {
-    if (entityInfo.dataset_id === id) {
-      rowCount = entityInfo.count?.toLocaleString() || '—';
-    }
-    // Check enrichment datasets
-    if (entityInfo.enriched_with?.includes(id)) {
-      rowCount = entityInfo.enriched_count?.toLocaleString() || '—';
-    }
-  }
+const datasetsByEntity: Record<string, DatasetRow[]> = {};
+for (const entityType of entityOrder) {
+  datasetsByEntity[entityType] = [];
+}
 
-  return {
+for (const [id, info] of Object.entries(datasetRegistry)) {
+  const row: DatasetRow = {
     id,
     name: info.name,
     entity: info.entity,
     vintage: info.vintage,
-    rowCount,
+    role: info.role,
+    source: info.source,
+    rowCount: getRowCount(id),
     hasMethodology: editorialFiles.includes(`${id}.md`),
   };
-});
+  if (datasetsByEntity[info.entity]) {
+    datasetsByEntity[info.entity].push(row);
+  }
+}
+
+// Sort each group: base first, then enrichment, then cross-link
+const roleOrder = { base: 0, enrichment: 1, 'cross-link': 2 };
+for (const group of Object.values(datasetsByEntity)) {
+  group.sort((a, b) => (roleOrder[a.role as keyof typeof roleOrder] ?? 1) - (roleOrder[b.role as keyof typeof roleOrder] ?? 1));
+}
+
+const totalDatasets = Object.keys(datasetRegistry).length;
+const totalWithMethodology = Object.keys(datasetRegistry).filter(id => editorialFiles.includes(`${id}.md`)).length;
+
+// Entity counts from index.json
+function getEntityCount(entityType: string): string {
+  const info = indexData.entities?.[entityType];
+  return info?.count?.toLocaleString() || '—';
+}
+
+// Role badge colors
+function roleBadgeClass(role: string): string {
+  if (role === 'base') return 'badge-role-base';
+  if (role === 'cross-link') return 'badge-role-crosslink';
+  return 'badge-role-enrichment';
+}
 ---
 
 <BaseLayout title="Methodology" description="How CareGraph processes, validates, and presents CMS and CDC public data.">
@@ -77,8 +102,8 @@ const datasets: DatasetRow[] = Object.entries(datasetRegistry).map(([id, info]) 
     <p>
       CareGraph exists because public healthcare data should be publicly accessible — not locked
       behind vendor portals, paywalls, or impenetrable government websites. Every number on this
-      site comes from an official CMS or CDC dataset. We do not model, predict, or editorialize
-      the data; we clean it, connect it, and present it with full provenance.
+      site comes from an official CMS, CDC, or Medicaid dataset. We do not model, predict, or
+      editorialize the data; we clean it, connect it, and present it with full provenance.
     </p>
     <p>
       Trust-first design means three things:
@@ -103,42 +128,92 @@ const datasets: DatasetRow[] = Object.entries(datasetRegistry).map(([id, info]) 
   </div>
 
   <div class="card">
-    <h2>Datasets</h2>
+    <h2>Datasets Overview</h2>
     <p>
-      CareGraph ingests {datasets.length} datasets from CMS and CDC. Each dataset has a dedicated
-      methodology page describing its contents, join strategy, limitations, and data quality notes.
+      CareGraph ingests <strong>{totalDatasets} datasets</strong> from CMS, CDC, and Medicaid,
+      organized across 7 entity types. Each dataset has a dedicated methodology page describing
+      its contents, join strategy, known limitations, and data quality notes.
     </p>
-    <div style="overflow-x: auto;">
-      <table class="data-table">
-        <thead>
-          <tr>
-            <th>Dataset</th>
-            <th>Entity Type</th>
-            <th>Vintage</th>
-            <th>Entity Count</th>
-            <th>Methodology</th>
-          </tr>
-        </thead>
-        <tbody>
-          {datasets.map(ds => (
-            <tr>
-              <td style="font-weight: 500;">{ds.name}</td>
-              <td><span class={`badge badge-${ds.entity}`}>{ds.entity}</span></td>
-              <td>{ds.vintage}</td>
-              <td>{ds.rowCount}</td>
-              <td>
-                {ds.hasMethodology ? (
-                  <a href={`/methodology/dataset/${ds.id}/`}>View details</a>
-                ) : (
-                  <span style="color: var(--color-text-muted);">Pending</span>
-                )}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+    <div class="entity-summary">
+      {entityOrder.map(entityType => {
+        const datasets = datasetsByEntity[entityType] || [];
+        const dsCount = entityType === 'condition' ? 'derived' : `${datasets.length} datasets`;
+        return (
+          <span class="entity-chip">
+            <span class={`badge badge-${entityType}`}>{entityLabels[entityType]}</span>
+            <span class="chip-counts">{dsCount} &middot; {getEntityCount(entityType)} entities</span>
+          </span>
+        );
+      })}
     </div>
+    <p style="margin-top: 0.75rem; font-size: 0.85rem; color: var(--color-text-muted);">
+      Each dataset is classified by its role:
+      <span class="badge badge-role-base">base</span> datasets create entity pages,
+      <span class="badge badge-role-enrichment">enrichment</span> datasets add measures to existing pages, and
+      <span class="badge badge-role-crosslink">cross-link</span> datasets connect entities across types.
+    </p>
   </div>
+
+  {entityOrder.map(entityType => {
+    const datasets = datasetsByEntity[entityType] || [];
+    if (datasets.length === 0 && entityType === 'condition') {
+      // Conditions are derived from CDC PLACES (listed under Counties)
+      return (
+        <div class="card" id={`datasets-${entityType}`}>
+          <h2>
+            <span class={`badge badge-${entityType}`}>{entityType}</span>
+            {entityLabels[entityType]}
+          </h2>
+          <p>
+            Condition entity pages are derived from the
+            <a href="/methodology/dataset/cdc-places/">CDC PLACES County-Level Data</a> dataset
+            by aggregating prevalence estimates across all counties for each health measure.
+            See the <a href="#datasets-county">Counties</a> section for the source dataset methodology.
+          </p>
+        </div>
+      );
+    }
+    if (datasets.length === 0) return null;
+    return (
+      <div class="card" id={`datasets-${entityType}`}>
+        <h2>
+          <span class={`badge badge-${entityType}`}>{entityType}</span>
+          {entityLabels[entityType]}
+          <span class="dataset-count">({datasets.length} datasets)</span>
+        </h2>
+        <div style="overflow-x: auto;">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Dataset</th>
+                <th>Role</th>
+                <th>Source</th>
+                <th>Vintage</th>
+                <th>Methodology</th>
+              </tr>
+            </thead>
+            <tbody>
+              {datasets.map(ds => (
+                <tr>
+                  <td style="font-weight: 500;">{ds.name}</td>
+                  <td><span class={`badge ${roleBadgeClass(ds.role)}`}>{ds.role}</span></td>
+                  <td>{ds.source}</td>
+                  <td>{ds.vintage}</td>
+                  <td>
+                    {ds.hasMethodology ? (
+                      <a href={`/methodology/dataset/${ds.id}/`}>View details</a>
+                    ) : (
+                      <span style="color: var(--color-text-muted);">Pending</span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  })}
 
   <div class="card" id="limitations-ledger">
     <h2>Limitations Ledger</h2>
@@ -153,7 +228,7 @@ const datasets: DatasetRow[] = Object.entries(datasetRegistry).map(([id, info]) 
         claims-level data to CMS in the same way FFS does.
       </li>
       <li>
-        <strong>Reporting lag.</strong> CMS data typically reflects a measurement period 12-24
+        <strong>Reporting lag.</strong> CMS data typically reflects a measurement period 12–24
         months prior to the data release date. Quality metrics like star ratings, readmission
         ratios, and VBP scores use multi-year measurement windows that lag even further.
       </li>
@@ -172,6 +247,11 @@ const datasets: DatasetRow[] = Object.entries(datasetRegistry).map(([id, info]) 
         model-derived (MRP from BRFSS), not direct measurements. Confidence intervals should be
         consulted, especially for small-population counties.
       </li>
+      <li>
+        <strong>Claims-based identification.</strong> Chronic conditions, complications, and
+        readmissions are identified from billing claims, not clinical records. Coding practices
+        vary across providers and can affect reported rates independently of actual clinical events.
+      </li>
     </ul>
   </div>
 
@@ -181,12 +261,12 @@ const datasets: DatasetRow[] = Object.entries(datasetRegistry).map(([id, info]) 
       The CareGraph ETL (Extract, Transform, Load) pipeline runs as a single Python script that:
     </p>
     <ol>
-      <li>Downloads raw CSV files from data.cms.gov and data.cdc.gov APIs</li>
-      <li>Builds base entity manifests (one JSON file per hospital, county, SNF, or ACO)</li>
-      <li>Enriches entities with data from supplementary datasets (HRRP, HVBP, CDC PLACES)</li>
-      <li>Builds cross-links between related entities (hospitals in counties, SNFs near hospitals)</li>
+      <li>Downloads {totalDatasets} raw CSV files from data.cms.gov, data.cdc.gov, and data.medicaid.gov APIs</li>
+      <li>Builds base entity manifests for 7 entity types (one JSON file per hospital, SNF, county, ACO, drug, condition, or DRG)</li>
+      <li>Enriches entities with quality measures, financial data, penalties, patient experience scores, cost reports, and drug pricing from supplementary datasets</li>
+      <li>Builds cross-links between related entities (hospitals in ACOs, SNF affiliates, beneficiaries by county)</li>
       <li>Generates a search index for the site-wide search feature</li>
-      <li>Writes a manifest index (<code>site_data/index.json</code>) with pipeline metadata</li>
+      <li>Writes a manifest index (<code>site_data/index.json</code>) with pipeline metadata and provenance</li>
     </ol>
     <p>
       The pipeline is idempotent: re-running it on the same day skips already-downloaded files.
@@ -206,3 +286,58 @@ const datasets: DatasetRow[] = Object.entries(datasetRegistry).map(([id, info]) 
     </p>
   </div>
 </BaseLayout>
+
+<style>
+  .entity-summary {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    margin-top: 1rem;
+  }
+
+  .entity-chip {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    background: var(--color-bg-subtle, #f6f8fa);
+    border: 1px solid var(--color-border, #d0d7de);
+    border-radius: 6px;
+    padding: 0.3rem 0.6rem;
+  }
+
+  .chip-counts {
+    font-size: 0.8rem;
+    color: var(--color-text-muted);
+  }
+
+  .dataset-count {
+    font-weight: 400;
+    font-size: 0.9rem;
+    color: var(--color-text-muted);
+    margin-left: 0.3rem;
+  }
+
+  .badge-role-base {
+    background: #1a7f37;
+    color: white;
+    font-size: 0.7rem;
+    padding: 0.1rem 0.4rem;
+    border-radius: 3px;
+  }
+
+  .badge-role-enrichment {
+    background: #0969da;
+    color: white;
+    font-size: 0.7rem;
+    padding: 0.1rem 0.4rem;
+    border-radius: 3px;
+  }
+
+  .badge-role-crosslink {
+    background: #8250df;
+    color: white;
+    font-size: 0.7rem;
+    padding: 0.1rem 0.4rem;
+    border-radius: 3px;
+  }
+</style>
