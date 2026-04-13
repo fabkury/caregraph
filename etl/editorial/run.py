@@ -411,20 +411,6 @@ DATASET_META: dict[str, dict] = {
             "align temporally with health outcome data."
         ),
     },
-    "cms-chronic-conditions": {
-        "join_key": "FIPS county code",
-        "join_key_type": "5-digit string (state FIPS + county FIPS)",
-        "field_count": "~30 per county (prevalence rates for 21 chronic conditions)",
-        "suppression_notes": (
-            "Prevalence rates cover Medicare fee-for-service beneficiaries "
-            "only — Medicare Advantage enrollees are excluded, which biases "
-            "prevalence downward in markets with high MA penetration. "
-            "Counties with fewer than 11 beneficiaries with a given "
-            "condition have that prevalence rate suppressed. Conditions "
-            "are identified from claims, not clinical records, so "
-            "under-coding and under-diagnosis lead to underestimates."
-        ),
-    },
 }
 
 

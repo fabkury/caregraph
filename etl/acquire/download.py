@@ -226,13 +226,6 @@ DATASETS: dict[str, dict] = {
         "csv_url": None,
         "api_url": "https://data.cdc.gov/resource/i6u4-y3g4.csv",
     },
-    "cms-chronic-conditions": {
-        "name": "Medicare Specific Chronic Conditions by County",
-        "entity": "county",
-        "api_type": "data-api",
-        "csv_url": None,
-        "api_url": "https://data.cms.gov/data-api/v1/dataset/efaa78b6-71af-4e1e-b52a-93ed3a1e1cb4/data",
-    },
     "nadac": {
         "name": "NADAC National Average Drug Acquisition Cost",
         "entity": "drug",

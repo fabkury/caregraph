@@ -51,7 +51,6 @@ Generated via `python etl/editorial/run.py` (uses `claude -p`):
 | nadac | drug | Not started |
 | inpatient-by-drg | drg | Not started |
 | cdc-sdoh | county | Not started |
-| cms-chronic-conditions | county | Not started |
 
 ## How to resume
 

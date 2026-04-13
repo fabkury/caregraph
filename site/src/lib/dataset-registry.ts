@@ -161,14 +161,6 @@ export const datasetRegistry: Record<string, DatasetInfo> = {
     role: 'enrichment',
     source: 'CDC',
   },
-  'cms-chronic-conditions': {
-    name: 'Medicare Specific Chronic Conditions by County',
-    entity: 'county',
-    vintage: '2023',
-    role: 'enrichment',
-    source: 'CMS',
-  },
-
   // ── ACOs ──────────────────────────────────────────────────────────
   'mssp-performance': {
     name: 'MSSP ACO Performance PY2024',

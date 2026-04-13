@@ -55,7 +55,6 @@ from etl.build.enrich_tier_a import (
     enrich_hospitals_hac,
     enrich_acos_county_benes,
     enrich_counties_sdoh,
-    enrich_counties_chronic,
     enrich_drugs_nadac,
 )
 
@@ -201,15 +200,6 @@ def main() -> None:
         county_out, downloaded["cdc-sdoh"], today)
     print(f"  -> {sdoh_count} counties enriched with SDOH data")
 
-    print("\n[Step 10a] Enriching counties with Medicare Chronic Conditions data...")
-    if "cms-chronic-conditions" in downloaded:
-        chronic_count = enrich_counties_chronic(
-            county_out, downloaded["cms-chronic-conditions"], today)
-        print(f"  -> {chronic_count} counties enriched with chronic conditions data")
-    else:
-        chronic_count = 0
-        print("  -> Skipped (dataset not available)")
-
     print("\n[Step 10a] Enriching drugs with NADAC pricing data...")
     nadac_count = enrich_drugs_nadac(
         drug_out, downloaded["nadac"], today)
@@ -319,7 +309,7 @@ def main() -> None:
                 "dataset": "Medicare Geographic Variation by County",
                 "dataset_id": "geo-var-county",
                 "enriched_with": [
-                    "cdc-places", "cdc-sdoh", "cms-chronic-conditions",
+                    "cdc-places", "cdc-sdoh",
                 ],
                 "enriched_count": county_enriched,
             },

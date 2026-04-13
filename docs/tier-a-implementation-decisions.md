@@ -279,7 +279,6 @@ All 7 datasets share a common benchmarking pattern. During ETL, after enrichment
 | `snf-cost-report` | data-api (CSV direct) | snf |
 | `hac-reduction` | provider-data | hospital |
 | `cdc-sdoh` | soda | county |
-| `cms-chronic-conditions` | data-api (CSV direct) | county |
 | `nadac` | soda (data.medicaid.gov) | drug |
 
 ### Provenance
