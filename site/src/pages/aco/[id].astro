@@ -365,10 +365,6 @@ function badgeClass(type: string): string {
   </div>
 
   <div class="actions-bar">
-    <div class="mode-toggle" id="mode-toggle">
-      <button class="active" data-mode="explore">Explore</button>
-      <button data-mode="table">Table</button>
-    </div>
     <a href={csvDataUri} download={`aco_${id}_mssp_performance.csv`} class="btn">
       Download CSV
     </a>
@@ -377,8 +373,8 @@ function badgeClass(type: string): string {
     </button>
   </div>
 
-  <!-- Explore mode -->
-  <div id="explore-view">
+  <!-- Key Metrics summary -->
+  {Object.keys(msspMetrics).length > 0 && (
     <div class="card">
       <h2>MSSP Performance — Key Metrics</h2>
       <div class="metric-grid">
@@ -388,186 +384,49 @@ function badgeClass(type: string): string {
           return (
             <div class="metric-card">
               <div class="label">{m.label}</div>
-              <div class="value">{formatValue(m.value, format)}</div>
+              <div class="value">
+                {formatValue(m.value, format)}
+                {pctlBadge(key) && <span class={`pctl-badge ${pctlClass(key)}`}>{pctlBadge(key)}</span>}
+              </div>
             </div>
           );
         })}
       </div>
     </div>
+  )}
 
-    <div class="card">
-      <h2>Track Information</h2>
-      <dl class="kv-grid">
-        <dt>Current Track</dt>
-        <dd>{track || '\u2014'}</dd>
-        <dt>Agreement Type</dt>
-        <dd>{rawData.Agree_Type || '\u2014'}</dd>
-        <dt>Risk Model</dt>
-        <dd>{rawData.Risk_Model || '\u2014'}</dd>
-        <dt>Assignment Type</dt>
-        <dd>{rawData.Assign_Type || '\u2014'}</dd>
-        <dt>Start Date</dt>
-        <dd>{rawData.Current_Start_Date || '\u2014'}</dd>
-        <dt>Agreement Period</dt>
-        <dd>{rawData.Agreement_Period_Num || '\u2014'}</dd>
-        <dt>SNF Waiver</dt>
-        <dd>{rawData.SNF_Waiver === '1' ? 'Yes' : rawData.SNF_Waiver === '0' ? 'No' : '\u2014'}</dd>
-      </dl>
-    </div>
+  <!-- Section navigation -->
+  <nav class="section-nav" aria-label="Data sections">
+    {ACO_SECTIONS.map(s => (
+      <a href={`#${s.id}`}>{s.title}</a>
+    ))}
+    {participants && participants.length > 0 && <a href="#network-participants">Participants</a>}
+    {snfAffiliates && snfAffiliates.length > 0 && <a href="#snf-affiliates">SNF Affiliates</a>}
+    {peerCohort && <a href="#peer-cohort">Peer Cohort</a>}
+  </nav>
 
-    {Object.keys(msspMetrics).length === 0 && (
-      <div class="card">
-        <p style="color: var(--color-text-muted);">
-          No MSSP performance metrics available for this ACO.
-        </p>
-      </div>
-    )}
-
-    {participants && participants.length > 0 && (
-      <div class="card">
-        <h2>Network Participants ({participants.length})</h2>
-        <div style="overflow-x: auto;">
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th>Provider Name</th>
-                <th>Type</th>
-                <th>CCN</th>
-                <th>Start Date</th>
-              </tr>
-            </thead>
-            <tbody>
-              {participants.slice(0, 100).map((p: any) => (
-                <tr>
-                  <td style="font-weight: 500;">
-                    {p.ccn ? (
-                      <a href={`/hospital/${p.ccn}/`}>{p.provider_name || p.ccn}</a>
-                    ) : (
-                      p.provider_name || '\u2014'
-                    )}
-                  </td>
-                  <td>{p.provider_type || '\u2014'}</td>
-                  <td><code>{p.ccn || p.tin || '\u2014'}</code></td>
-                  <td>{p.start_date || '\u2014'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        {participants.length > 100 && (
-          <p style="font-size: 0.8rem; color: var(--color-text-muted); margin-top: 0.5rem;">
-            Showing 100 of {participants.length} participants. Use Table view for full data.
-          </p>
-        )}
-        <p style="font-size: 0.8rem; color: var(--color-text-muted); margin-top: 0.5rem;">
-          Providers participating in this ACO. Source: CMS ACO Participants.
-        </p>
-      </div>
-    )}
-
-    {snfAffiliates && snfAffiliates.length > 0 && (
-      <div class="card">
-        <h2>SNF Affiliates ({snfAffiliates.length})</h2>
-        <div style="overflow-x: auto;">
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th>SNF Name</th>
-                <th>CCN</th>
-                <th>State</th>
-              </tr>
-            </thead>
-            <tbody>
-              {snfAffiliates.map((a: any) => (
-                <tr>
-                  <td style="font-weight: 500;">
-                    {a.snf_ccn ? (
-                      <a href={`/snf/${a.snf_ccn}/`}>{a.snf_name || a.snf_ccn}</a>
-                    ) : (
-                      a.snf_name || '\u2014'
-                    )}
-                  </td>
-                  <td><code>{a.snf_ccn || '\u2014'}</code></td>
-                  <td>{a.state || '\u2014'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        <p style="font-size: 0.8rem; color: var(--color-text-muted); margin-top: 0.5rem;">
-          Skilled Nursing Facilities affiliated with this ACO (3-day SNF waiver list). Source: CMS ACO SNF Affiliates.
-        </p>
-      </div>
-    )}
-
-    {related.length > 0 && (
-      <div class="card">
-        <h2>Related Entities</h2>
-        <ul class="related-list">
-          {related.map((rel: any) => (
-            <li>
-              <span class={badgeClass(rel.type)}>{rel.type}</span>
-              <a href={entityUrl(rel)}>{rel.name}</a>
-              {rel.context && <span class="related-context">{rel.context}</span>}
-            </li>
-          ))}
-        </ul>
-      </div>
-    )}
-
-    <div class="methodology-stub">
-      <strong>Methodology</strong>
-      <p>
-        Data source: <strong>{provenance?.dataset_name}</strong>
-        (dataset ID: <code>{provenance?.dataset_id}</code>).
-        Vintage: {provenance?.vintage}.
-        Downloaded: {provenance?.download_date}.
-        Rows in source: {provenance?.row_count?.toLocaleString()}.
-      </p>
-      <p>
-        <em>MSSP ACO Performance</em> reports financial and quality performance
-        for Accountable Care Organizations participating in the Medicare Shared Savings Program.
-        Savings/losses are calculated against risk-adjusted, regionally-weighted benchmarks.
-      </p>
-      <p>
-        <a href="/methodology/">Full methodology &rarr;</a>
-      </p>
-    </div>
+  {/* Benchmark legend */}
+  <div class="benchmark-legend">
+    <span class="benchmark-legend-item">
+      <span class="benchmark-legend-swatch" style="background: #fee2e2;"></span> Bottom quartile
+    </span>
+    <span class="benchmark-legend-item">
+      <span class="benchmark-legend-swatch" style="background: #fef9c3;"></span> Middle
+    </span>
+    <span class="benchmark-legend-item">
+      <span class="benchmark-legend-swatch" style="background: #dcfce7;"></span> Top quartile
+    </span>
+    <span class="benchmark-legend-item" style="color: var(--color-text-muted);">
+      MSSP median shown in gray &middot; Peer median in blue
+    </span>
   </div>
-
-  <!-- Table mode — Structured Sections -->
-  <div id="table-view" style="display: none;">
-
-    <!-- Section navigation -->
-    <nav class="section-nav" aria-label="Data sections">
-      {ACO_SECTIONS.map(s => (
-        <a href={`#${s.id}`}>{s.title}</a>
-      ))}
-      {peerCohort && <a href="#peer-cohort">Peer Cohort</a>}
-    </nav>
-
-    {/* Benchmark legend */}
-    <div class="benchmark-legend">
-      <span class="benchmark-legend-item">
-        <span class="benchmark-legend-swatch" style="background: #fee2e2;"></span> Bottom quartile
-      </span>
-      <span class="benchmark-legend-item">
-        <span class="benchmark-legend-swatch" style="background: #fef9c3;"></span> Middle
-      </span>
-      <span class="benchmark-legend-item">
-        <span class="benchmark-legend-swatch" style="background: #dcfce7;"></span> Top quartile
-      </span>
-      <span class="benchmark-legend-item" style="color: var(--color-text-muted);">
-        MSSP median shown in gray &middot; Peer median in blue
-      </span>
-    </div>
 
     <!-- 1. Program Structure -->
     {(() => {
       const sec = ACO_SECTIONS.find(s => s.id === 'program-structure')!;
       return (
         <section class="aco-section" id={sec.id}>
-          <a href="#table-view" class="section-back">Back to top</a>
+          <a href="#main-content" class="section-back">Back to top</a>
           <h2>{sec.title}</h2>
           <table class="kv-table">
             <tbody>
@@ -595,7 +454,7 @@ function badgeClass(type: string): string {
 
     <!-- 2. Financial Performance — Savings Waterfall -->
     <section class="aco-section" id="financial-performance">
-      <a href="#table-view" class="section-back">Back to top</a>
+      <a href="#main-content" class="section-back">Back to top</a>
       <h2>Financial Performance</h2>
       <p class="section-help">Step-by-step savings calculation from historical benchmark to earned savings/losses.</p>
       <div style="overflow-x: auto;">
@@ -647,7 +506,7 @@ function badgeClass(type: string): string {
       } as any;
       return (
         <section class="aco-section" id={sec.id}>
-          <a href="#table-view" class="section-back">Back to top</a>
+          <a href="#main-content" class="section-back">Back to top</a>
           <h2>{sec.title}</h2>
           {pivot.help && <p class="section-help">{pivot.help}</p>}
           <div style="overflow-x: auto;">
@@ -727,7 +586,7 @@ function badgeClass(type: string): string {
       const pivot = sec.pivot!;
       return (
         <section class="aco-section" id={sec.id}>
-          <a href="#table-view" class="section-back">Back to top</a>
+          <a href="#main-content" class="section-back">Back to top</a>
           <h2>{sec.title}</h2>
           {pivot.help && <p class="section-help">{pivot.help}</p>}
 
@@ -847,7 +706,7 @@ function badgeClass(type: string): string {
 
     <!-- 5. Beneficiary Demographics -->
     <section class="aco-section" id="demographics">
-      <a href="#table-view" class="section-back">Back to top</a>
+      <a href="#main-content" class="section-back">Back to top</a>
       <h2>Beneficiary Demographics</h2>
       <p class="section-help">
         Distribution of {parseInt(rawData.N_AB || '0').toLocaleString()} assigned beneficiaries by age, gender, and race/ethnicity.
@@ -978,7 +837,7 @@ function badgeClass(type: string): string {
       const compTotal = compFields.reduce((s, k) => s + (parseFloat(rawData[k] || '0') || 0), 0);
       return (
         <section class="aco-section" id={sec.id}>
-          <a href="#table-view" class="section-back">Back to top</a>
+          <a href="#main-content" class="section-back">Back to top</a>
           <h2>{sec.title}</h2>
           <p class="section-help">Annual per-beneficiary spending by care setting. Bar shows this ACO's share; red marker shows MSSP median share.</p>
           <div style="overflow-x: auto;">
@@ -1048,7 +907,7 @@ function badgeClass(type: string): string {
 
       return (
         <section class="aco-section" id={sec.id}>
-          <a href="#table-view" class="section-back">Back to top</a>
+          <a href="#main-content" class="section-back">Back to top</a>
           <h2>{sec.title}</h2>
           <p class="section-help">Rates per 1,000 assigned beneficiaries unless otherwise noted.</p>
 
@@ -1115,7 +974,7 @@ function badgeClass(type: string): string {
       const clinicianFields = sec.fields!.slice(6);
       return (
         <section class="aco-section" id={sec.id}>
-          <a href="#table-view" class="section-back">Back to top</a>
+          <a href="#main-content" class="section-back">Back to top</a>
           <h2>{sec.title}</h2>
           <div class="provider-split">
             <div>
@@ -1154,7 +1013,7 @@ function badgeClass(type: string): string {
       const sec = ACO_SECTIONS.find(s => s.id === 'cahps')!;
       return (
         <section class="aco-section" id={sec.id}>
-          <a href="#table-view" class="section-back">Back to top</a>
+          <a href="#main-content" class="section-back">Back to top</a>
           <h2>{sec.title}</h2>
           <p class="section-help">Consumer Assessment of Healthcare Providers and Systems survey scores (0–100 scale). Gray marker = MSSP median. Blue marker = peer median.</p>
           <div>
@@ -1195,7 +1054,7 @@ function badgeClass(type: string): string {
 
     <!-- 10. Clinical Quality Measures with thresholds -->
     <section class="aco-section" id="quality-measures">
-      <a href="#table-view" class="section-back">Back to top</a>
+      <a href="#main-content" class="section-back">Back to top</a>
       <h2>Clinical Quality Measures</h2>
       <p class="section-help">MSSP quality measures. Measures marked "lower is better" are inverted — a lower score indicates better performance.</p>
 
@@ -1272,7 +1131,7 @@ function badgeClass(type: string): string {
     <!-- Peer Cohort section -->
     {peerCohort && (
       <section class="aco-section" id="peer-cohort">
-        <a href="#table-view" class="section-back">Back to top</a>
+        <a href="#main-content" class="section-back">Back to top</a>
         <h2>Peer Cohort</h2>
         <p class="section-help">{peerDesc}</p>
 
@@ -1290,6 +1149,87 @@ function badgeClass(type: string): string {
             <a href="/methodology/">Learn more</a>
           </p>
         </details>
+      </section>
+    )}
+
+    <!-- Network Participants -->
+    {participants && participants.length > 0 && (
+      <section class="aco-section" id="network-participants">
+        <a href="#main-content" class="section-back">Back to top</a>
+        <h2>Network Participants ({participants.length})</h2>
+        <div style="overflow-x: auto;">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Provider Name</th>
+                <th>Type</th>
+                <th>CCN</th>
+                <th>Start Date</th>
+              </tr>
+            </thead>
+            <tbody>
+              {participants.slice(0, 200).map((p: any) => (
+                <tr>
+                  <td style="font-weight: 500;">
+                    {p.ccn ? (
+                      <a href={`/hospital/${p.ccn}/`}>{p.provider_name || p.ccn}</a>
+                    ) : (
+                      p.provider_name || '\u2014'
+                    )}
+                  </td>
+                  <td>{p.provider_type || '\u2014'}</td>
+                  <td><code>{p.ccn || p.tin || '\u2014'}</code></td>
+                  <td>{p.start_date || '\u2014'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        {participants.length > 200 && (
+          <p style="font-size: 0.8rem; color: var(--color-text-muted); margin-top: 0.5rem;">
+            Showing 200 of {participants.length} participants. Download CSV for full list.
+          </p>
+        )}
+        <p style="font-size: 0.8rem; color: var(--color-text-muted); margin-top: 0.5rem;">
+          Providers participating in this ACO. Source: CMS ACO Participants.
+        </p>
+      </section>
+    )}
+
+    <!-- SNF Affiliates -->
+    {snfAffiliates && snfAffiliates.length > 0 && (
+      <section class="aco-section" id="snf-affiliates">
+        <a href="#main-content" class="section-back">Back to top</a>
+        <h2>SNF Affiliates ({snfAffiliates.length})</h2>
+        <div style="overflow-x: auto;">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>SNF Name</th>
+                <th>CCN</th>
+                <th>State</th>
+              </tr>
+            </thead>
+            <tbody>
+              {snfAffiliates.map((a: any) => (
+                <tr>
+                  <td style="font-weight: 500;">
+                    {a.snf_ccn ? (
+                      <a href={`/snf/${a.snf_ccn}/`}>{a.snf_name || a.snf_ccn}</a>
+                    ) : (
+                      a.snf_name || '\u2014'
+                    )}
+                  </td>
+                  <td><code>{a.snf_ccn || '\u2014'}</code></td>
+                  <td>{a.state || '\u2014'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <p style="font-size: 0.8rem; color: var(--color-text-muted); margin-top: 0.5rem;">
+          Skilled Nursing Facilities affiliated with this ACO (3-day SNF waiver list). Source: CMS ACO SNF Affiliates.
+        </p>
       </section>
     )}
 
@@ -1311,34 +1251,40 @@ function badgeClass(type: string): string {
       </section>
     )}
 
+  <!-- Related Entities -->
+  {related.length > 0 && (
+    <div class="card">
+      <h2>Related Entities</h2>
+      <ul class="related-list">
+        {related.map((rel: any) => (
+          <li>
+            <span class={badgeClass(rel.type)}>{rel.type}</span>
+            <a href={entityUrl(rel)}>{rel.name}</a>
+            {rel.context && <span class="related-context">{rel.context}</span>}
+          </li>
+        ))}
+      </ul>
+    </div>
+  )}
+
+  <div class="methodology-stub">
+    <strong>Methodology</strong>
+    <p>
+      Data source: <strong>{provenance?.dataset_name}</strong>
+      (dataset ID: <code>{provenance?.dataset_id}</code>).
+      Vintage: {provenance?.vintage}.
+      Downloaded: {provenance?.download_date}.
+      Rows in source: {provenance?.row_count?.toLocaleString()}.
+    </p>
+    <p>
+      <em>MSSP ACO Performance</em> reports financial and quality performance
+      for Accountable Care Organizations participating in the Medicare Shared Savings Program.
+      Savings/losses are calculated against risk-adjusted, regionally-weighted benchmarks.
+    </p>
+    <p>
+      <a href="/methodology/">Full methodology &rarr;</a>
+    </p>
   </div>
-
-  <script>
-    // Mode toggle
-    const toggle = document.getElementById('mode-toggle');
-    const exploreView = document.getElementById('explore-view');
-    const tableView = document.getElementById('table-view');
-
-    if (toggle && exploreView && tableView) {
-      const buttons = toggle.querySelectorAll('button');
-      const savedMode = localStorage.getItem('caregraph-mode') || 'explore';
-      setMode(savedMode);
-
-      buttons.forEach(btn => {
-        btn.addEventListener('click', () => {
-          const mode = btn.getAttribute('data-mode') || 'explore';
-          setMode(mode);
-          localStorage.setItem('caregraph-mode', mode);
-        });
-      });
-
-      function setMode(mode: string) {
-        buttons.forEach(b => b.classList.toggle('active', b.getAttribute('data-mode') === mode));
-        exploreView!.style.display = mode === 'explore' ? '' : 'none';
-        tableView!.style.display = mode === 'table' ? '' : 'none';
-      }
-    }
-  </script>
 
   <script>
     import { isPinned, addPin, removePin } from '../../scripts/workspace';
