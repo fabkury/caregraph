@@ -202,9 +202,13 @@ def main() -> None:
     print(f"  -> {sdoh_count} counties enriched with SDOH data")
 
     print("\n[Step 10a] Enriching counties with Medicare Chronic Conditions data...")
-    chronic_count = enrich_counties_chronic(
-        county_out, downloaded["cms-chronic-conditions"], today)
-    print(f"  -> {chronic_count} counties enriched with chronic conditions data")
+    if "cms-chronic-conditions" in downloaded:
+        chronic_count = enrich_counties_chronic(
+            county_out, downloaded["cms-chronic-conditions"], today)
+        print(f"  -> {chronic_count} counties enriched with chronic conditions data")
+    else:
+        chronic_count = 0
+        print("  -> Skipped (dataset not available)")
 
     print("\n[Step 10a] Enriching drugs with NADAC pricing data...")
     nadac_count = enrich_drugs_nadac(

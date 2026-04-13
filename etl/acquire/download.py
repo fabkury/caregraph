@@ -86,42 +86,42 @@ DATASETS: dict[str, dict] = {
         "name": "Timely and Effective Care — Hospital",
         "entity": "hospital",
         "api_type": "provider-data",
-        "csv_url": None,
+        "csv_url": "https://data.cms.gov/provider-data/sites/default/files/resources/0437b5494ac61507ad90f2af6b8085a7_1770163650/Timely_and_Effective_Care-Hospital.csv",
         "api_url": "https://data.cms.gov/provider-data/api/1/datastore/query/yv7e-xc69/0",
     },
     "hosp-complications": {
         "name": "Complications and Deaths — Hospital",
         "entity": "hospital",
         "api_type": "provider-data",
-        "csv_url": None,
+        "csv_url": "https://data.cms.gov/provider-data/sites/default/files/resources/6af7c44d77436e5a1caac3ce39a83fe9_1770163566/Complications_and_Deaths-Hospital.csv",
         "api_url": "https://data.cms.gov/provider-data/api/1/datastore/query/ynj2-r877/0",
     },
     "hosp-hcahps": {
         "name": "Patient Survey (HCAHPS) — Hospital",
         "entity": "hospital",
         "api_type": "provider-data",
-        "csv_url": None,
+        "csv_url": "https://data.cms.gov/provider-data/sites/default/files/resources/78a50346fbe828ea0ce2837847af6a7c_1770163580/HCAHPS-Hospital.csv",
         "api_url": "https://data.cms.gov/provider-data/api/1/datastore/query/dgck-syfz/0",
     },
     "hosp-hai": {
         "name": "Healthcare Associated Infections — Hospital",
         "entity": "hospital",
         "api_type": "provider-data",
-        "csv_url": None,
+        "csv_url": "https://data.cms.gov/provider-data/sites/default/files/resources/43825e12dc0c923df9ba5cbdf473c9d5_1770163586/Healthcare_Associated_Infections-Hospital.csv",
         "api_url": "https://data.cms.gov/provider-data/api/1/datastore/query/77hc-ibv8/0",
     },
     "hosp-unplanned-visits": {
         "name": "Unplanned Hospital Visits — Hospital",
         "entity": "hospital",
         "api_type": "provider-data",
-        "csv_url": None,
+        "csv_url": "https://data.cms.gov/provider-data/sites/default/files/resources/30edc1d0417a34b58affcc2495a02b0a_1770163657/Unplanned_Hospital_Visits-Hospital.csv",
         "api_url": "https://data.cms.gov/provider-data/api/1/datastore/query/632h-zaca/0",
     },
     "hosp-mspb": {
         "name": "Medicare Spending Per Beneficiary — Hospital",
         "entity": "hospital",
         "api_type": "provider-data",
-        "csv_url": None,
+        "csv_url": "https://data.cms.gov/provider-data/sites/default/files/resources/500f70bcb6c65433c00a96af0e0c0430_1770163607/HOSPITAL_QUARTERLY_MSPB_6_DECIMALS.csv",
         "api_url": "https://data.cms.gov/provider-data/api/1/datastore/query/5hk7-b79m/0",
     },
     # ── Phase 2 SNF enrichment datasets ─────────────────────────
@@ -129,21 +129,21 @@ DATASETS: dict[str, dict] = {
         "name": "Nursing Home Penalties",
         "entity": "snf",
         "api_type": "provider-data",
-        "csv_url": None,
+        "csv_url": "https://data.cms.gov/provider-data/sites/default/files/resources/f7b99706de76b7f098d49a42836a58c5_1773439548/NH_Penalties_Mar2026.csv",
         "api_url": "https://data.cms.gov/provider-data/api/1/datastore/query/g6vv-u9sr/0",
     },
     "nh-deficiencies": {
         "name": "Nursing Home Health Deficiencies",
         "entity": "snf",
         "api_type": "provider-data",
-        "csv_url": None,
+        "csv_url": "https://data.cms.gov/provider-data/sites/default/files/resources/f609bbd6bc2c89e847fe42c3b3e40c65_1773439542/NH_HealthCitations_Mar2026.csv",
         "api_url": "https://data.cms.gov/provider-data/api/1/datastore/query/r5ix-sfxw/0",
     },
     "nh-ownership": {
         "name": "Nursing Home Ownership",
         "entity": "snf",
         "api_type": "provider-data",
-        "csv_url": None,
+        "csv_url": "https://data.cms.gov/provider-data/sites/default/files/resources/b26803052eaf48fda977c7088cb28a84_1773439546/NH_Ownership_Mar2026.csv",
         "api_url": "https://data.cms.gov/provider-data/api/1/datastore/query/y2hd-n93e/0",
     },
     # ── Phase 3 ACO cross-link datasets ─────────────────────────
@@ -209,7 +209,7 @@ DATASETS: dict[str, dict] = {
         "name": "Hospital-Acquired Condition (HAC) Reduction Program",
         "entity": "hospital",
         "api_type": "provider-data",
-        "csv_url": None,
+        "csv_url": "https://data.cms.gov/provider-data/sites/default/files/resources/74be67fd6833391f578abb5605d03ce6_1770163605/FY_2026_HAC_Reduction_Program_Hospital.csv",
         "api_url": "https://data.cms.gov/provider-data/api/1/datastore/query/yq43-i98g/0",
     },
     "aco-bene-county": {
@@ -237,13 +237,13 @@ DATASETS: dict[str, dict] = {
         "name": "NADAC National Average Drug Acquisition Cost",
         "entity": "drug",
         "api_type": "provider-data",
-        "csv_url": None,
+        "csv_url": "https://download.medicaid.gov/data/nadac-national-average-drug-acquisition-cost-04-08-2026.csv",
         "api_url": "https://data.medicaid.gov/api/1/datastore/query/fbb83258-11c7-47f5-8b18-5f8e79f7e704/0",
     },
 }
 
 # Page sizes for paginated API fallbacks
-PROVIDER_DATA_PAGE_SIZE = 5000
+PROVIDER_DATA_PAGE_SIZE = 1000
 DATA_API_PAGE_SIZE = 5000
 SODA_PAGE_SIZE = 50000
 
@@ -444,8 +444,15 @@ def download_dataset(
 
 
 def acquire_all(raw_dir: Path) -> dict[str, Path]:
-    """Download all datasets. Returns {dataset_id: file_path}."""
+    """Download all datasets. Returns {dataset_id: file_path}.
+
+    Datasets that fail to download are skipped with a warning.
+    """
     results = {}
     for dataset_id in DATASETS:
-        results[dataset_id] = download_dataset(dataset_id, raw_dir)
+        try:
+            results[dataset_id] = download_dataset(dataset_id, raw_dir)
+        except Exception as e:
+            print(f"  [ERROR] Failed to download {dataset_id}: {e}")
+            print(f"  [ERROR] Skipping {dataset_id} — enrichment will be skipped")
     return results
