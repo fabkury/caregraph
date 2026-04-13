@@ -103,7 +103,7 @@ A GitHub Actions workflow (`.github/workflows/deploy.yml`) automatically deploys
 
 Potential future work:
 1. Add more CMS datasets to existing entity types.
-2. Add new entity types (Clinicians, etc.).
+2. Add new entity types.
 3. Implement year toggle on entity pages (ETL ships all available vintages).
 4. Add DuckDB-WASM for in-browser SQL querying (v2).
 5. Add Leaflet-based maps.

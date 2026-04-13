@@ -143,14 +143,6 @@ import BaseLayout from '../layouts/BaseLayout.astro';
       margin-bottom: 0.25rem;
     }
 
-    .pin-compare-link {
-      margin-top: 1.5rem;
-      padding: 1rem;
-      background: var(--color-border-light);
-      border-radius: 6px;
-      font-size: 0.9rem;
-      display: none;
-    }
   </style>
 
   <div class="workspace-header">
@@ -182,10 +174,6 @@ import BaseLayout from '../layouts/BaseLayout.astro';
 
     <div class="pin-list" id="pin-list"></div>
 
-    <div class="pin-compare-link" id="compare-link-section">
-      <strong>Quick compare:</strong>
-      <span id="compare-links"></span>
-    </div>
   </div>
 
   <script>
@@ -200,8 +188,6 @@ import BaseLayout from '../layouts/BaseLayout.astro';
     const exportBtn = document.getElementById('export-btn')!;
     const importInput = document.getElementById('import-file') as HTMLInputElement;
     const clearBtn = document.getElementById('clear-btn')!;
-    const compareLinkSection = document.getElementById('compare-link-section')!;
-    const compareLinksSpan = document.getElementById('compare-links')!;
 
     function entityPageUrl(type: string, id: string): string {
       if (type === 'hospital') return `/hospital/${id}/`;
@@ -224,7 +210,6 @@ import BaseLayout from '../layouts/BaseLayout.astro';
       if (pins.length === 0) {
         emptyState.style.display = '';
         pinList.style.display = 'none';
-        compareLinkSection.style.display = 'none';
         return;
       }
 
@@ -270,27 +255,6 @@ import BaseLayout from '../layouts/BaseLayout.astro';
         });
       });
 
-      // Build compare links by type
-      const byType: Record<string, Pin[]> = {};
-      for (const pin of pins) {
-        if (!byType[pin.type]) byType[pin.type] = [];
-        byType[pin.type].push(pin);
-      }
-
-      const compareLinks: string[] = [];
-      for (const [type, typePins] of Object.entries(byType)) {
-        if (typePins.length >= 2) {
-          const ids = typePins.map(p => p.id).join(',');
-          compareLinks.push(`<a href="/compare/?type=${type}&ids=${ids}">Compare ${typePins.length} ${type}s</a>`);
-        }
-      }
-
-      if (compareLinks.length > 0) {
-        compareLinkSection.style.display = '';
-        compareLinksSpan.innerHTML = compareLinks.join(' &middot; ');
-      } else {
-        compareLinkSection.style.display = 'none';
-      }
     }
 
     // Export
