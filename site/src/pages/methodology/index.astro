@@ -102,8 +102,8 @@ function roleBadgeClass(role: string): string {
     <p>
       CareGraph exists because public healthcare data should be publicly accessible — not locked
       behind vendor portals, paywalls, or impenetrable government websites. Every number on this
-      site comes from an official CMS, CDC, or Medicaid dataset. We do not model, predict, or
-      editorialize the data; we clean it, connect it, and present it with full provenance.
+      site comes from an official CMS, CDC, or Medicaid dataset. We do not editorialize the data;
+      we clean it, connect it, and present it with full provenance.
     </p>
     <p>
       Trust-first design means three things:
@@ -256,22 +256,134 @@ function roleBadgeClass(role: string): string {
   </div>
 
   <div class="card">
-    <h2>ETL Pipeline</h2>
+    <h2>Build Pipeline: From Raw Data to Published Site</h2>
     <p>
-      The CareGraph ETL (Extract, Transform, Load) pipeline runs as a single Python script that:
+      Producing CareGraph end-to-end takes three orchestrated stages: a Python data pipeline,
+      an AI-assisted editorial pipeline, and a static site build deployed to GitHub Pages.
+      Every stage is open source, idempotent, and reproducible from the same raw CSVs.
+    </p>
+
+    <h3 style="margin-top: 1.25rem;">Stage 1 — Data pipeline (<code>etl/run.py</code>)</h3>
+    <p>
+      A single Python orchestrator walks through roughly eighteen numbered steps. In order:
     </p>
     <ol>
-      <li>Downloads {totalDatasets} raw CSV files from data.cms.gov, data.cdc.gov, and data.medicaid.gov APIs</li>
-      <li>Builds base entity manifests for 7 entity types (one JSON file per hospital, SNF, county, ACO, drug, condition, or DRG)</li>
-      <li>Enriches entities with quality measures, financial data, penalties, patient experience scores, cost reports, and drug pricing from supplementary datasets</li>
-      <li>Builds cross-links between related entities (hospitals in ACOs, SNF affiliates, beneficiaries by county)</li>
-      <li>Generates a search index for the site-wide search feature</li>
-      <li>Writes a manifest index (<code>site_data/index.json</code>) with pipeline metadata and provenance</li>
+      <li>
+        <strong>Acquire.</strong> Downloads {totalDatasets} raw CSV files from data.cms.gov,
+        data.cdc.gov, and data.medicaid.gov APIs. Files are stored with content-addressable
+        names (<code>{'{dataset_id}_{YYYY-MM-DD}.csv'}</code>) under <code>data/raw/</code>;
+        re-running on the same day skips already-downloaded files. Previous vintages are
+        preserved rather than overwritten.
+      </li>
+      <li>
+        <strong>Normalize join keys.</strong> CCNs are zero-padded to 6 characters, FIPS codes
+        to 5 digits, NPIs to 10 digits. SSA state/county codes are converted to FIPS.
+      </li>
+      <li>
+        <strong>Build base entity manifests</strong> for all 7 entity types — Hospitals, SNFs,
+        Counties, ACOs, Drugs, Conditions, and DRGs — one JSON manifest per entity, written
+        to <code>site_data/{'{entity}/{id}.json'}</code>.
+      </li>
+      <li>
+        <strong>Enrich entities</strong> with supplementary datasets: HRRP/HVBP penalties,
+        HCAHPS patient experience, HAI infection ratios, complications, timely &amp; effective
+        care, MSPB spending, HAC reduction, hospital and SNF cost reports, nursing-home
+        penalties and deficiencies and ownership, ACO participants and SNF affiliates,
+        county-level CDC PLACES prevalence and SDOH indicators, Part D / Part B drug
+        spending, Part B discarded units, and NADAC acquisition prices.
+      </li>
+      <li>
+        <strong>Cross-link entities</strong> — hospitals ↔ ACOs, SNFs ↔ ACOs, ACOs ↔ counties
+        (beneficiary assignment), hospitals ↔ counties, drugs ↔ DRGs. Cross-links are written
+        back into each side's manifest so entity pages render without runtime joins.
+      </li>
+      <li>
+        <strong>Compute benchmarks and peer cohorts</strong> for ACOs, hospitals, and counties.
+        Peer cohorts are built by matching ACOs on assigned-beneficiary size, region, and
+        track so individual ACO pages can show "how does this compare to similar ACOs?"
+        without client-side computation.
+      </li>
+      <li>
+        <strong>Derive precomputed views.</strong> Search index, map choropleth layers
+        (county-level), compare-mode summaries, and the paginated Explore-table indexes are
+        all built as static JSON artifacts.
+      </li>
+      <li>
+        <strong>Validate &amp; package.</strong> Pydantic schemas validate every manifest.
+        A provenance envelope (dataset ID, download date, source URL, row count, ETL
+        version) is attached to each enriched field. The pipeline writes
+        <code>site_data/index.json</code> with run-level metadata.
+      </li>
     </ol>
+
+    <h3 style="margin-top: 1.25rem;">Stage 2 — Editorial pipeline (<code>etl/editorial/run.py</code>)</h3>
     <p>
-      The pipeline is idempotent: re-running it on the same day skips already-downloaded files.
-      All source data is stored with content-addressable filenames
-      (<code>{'{dataset_id}_{date}.csv'}</code>) to enable reproducibility.
+      Every dataset gets a dedicated methodology page. These pages are drafted by a large
+      language model under tight constraints, not hand-written, so they can scale to dozens
+      of datasets while staying consistent in structure. The editorial orchestrator:
+    </p>
+    <ol>
+      <li>
+        Iterates each registered dataset and loads a shared prompt template
+        (<code>etl/editorial/prompts/dataset_methodology.txt</code>) plus a dataset-specific
+        hints file (<code>etl/editorial/hints/{'{dataset_id}.md'}</code>) curated by the
+        maintainer to pin down known caveats, join keys, suppression rules, and reporting
+        lags.
+      </li>
+      <li>
+        Substitutes dataset metadata (name, entity type, row count from the ETL's
+        <code>index.json</code>, join-key format, field count, suppression notes) into the
+        template and invokes the Claude CLI (<code>claude -p</code>) to generate the page.
+      </li>
+      <li>
+        <strong>Validates</strong> the generated markdown against required sections
+        (Overview, Join Strategy, Known Limitations, Data Quality Notes), minimum length,
+        and forbidden-phrase rules. Failed validation is flagged, not silently accepted.
+      </li>
+      <li>
+        Writes a checkpoint (<code>etl/editorial/.checkpoint.json</code>) so successful
+        generations are not regenerated on the next run — keeping costs bounded and making
+        the pipeline resumable after transient failures. A <code>--force</code> flag
+        regenerates everything; <code>--skip-ai</code> produces template placeholders
+        without calling the model.
+      </li>
+      <li>
+        Stage 1 then copies <code>etl/editorial/output/*.md</code> into
+        <code>site_data/editorial/</code> where the Astro build picks them up.
+      </li>
+    </ol>
+    <p style="font-size: 0.9rem;">
+      Of {totalDatasets} datasets, <strong>{totalWithMethodology}</strong> currently have a
+      generated methodology page. The editorial layer describes the data; it does not invent,
+      reinterpret, or summarize any numbers shown on entity pages.
+    </p>
+
+    <h3 style="margin-top: 1.25rem;">Stage 3 — Static site build &amp; deploy</h3>
+    <ol>
+      <li>
+        <strong>Astro static build</strong> (<code>site/</code>, run with <code>npm run build</code>).
+        Astro reads the JSON manifests in <code>site_data/</code> plus the generated editorial
+        markdown and renders a static HTML page for every entity, dataset methodology page,
+        explore table, map, and index. No server-side rendering, no runtime database, no
+        API calls from the browser — just precomputed HTML and JSON.
+      </li>
+      <li>
+        <strong>Commit &amp; push.</strong> The built <code>site/dist/</code> directory is
+        checked into the repository on <code>main</code>.
+      </li>
+      <li>
+        <strong>GitHub Pages deploy.</strong> A GitHub Actions workflow
+        (<code>.github/workflows/deploy.yml</code>) publishes <code>site/dist/</code> to
+        GitHub Pages on every push. The custom domain <strong>caregraph.org</strong> is
+        configured via <code>site/public/CNAME</code>.
+      </li>
+    </ol>
+
+    <p style="margin-top: 1rem; font-size: 0.9rem; color: var(--color-text-muted);">
+      The full pipeline — from an empty checkout to a deployable site — is a handful of
+      commands: <code>pip install -e .</code>, <code>python etl/run.py</code>,
+      <code>python etl/editorial/run.py</code>, <code>cd site &amp;&amp; npm install &amp;&amp; npm run build</code>.
+      Anyone can re-run it against the same raw CSVs and verify the outputs byte-for-byte.
     </p>
   </div>
 
