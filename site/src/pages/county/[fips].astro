@@ -15,6 +15,7 @@ import {
   pctlClass,
   type FieldDef,
 } from '../../config/county-fields';
+import { buildAllDataCsv, type AllDataRow as AllDataRowShared } from '../../config/all-data';
 
 // ── Load benchmarks once for all county pages ──────────────────────
 
@@ -321,11 +322,17 @@ allDataRows.sort((a, b) => {
   return a.label.localeCompare(b.label);
 });
 
-// ── CSV download (full raw row) ─────────────────────────────────────
-const csvHeaders = Object.keys(gvRaw);
-const csvRow = csvHeaders.map((h: string) => `"${(gvRaw[h] || '').replace(/"/g, '""')}"`);
-const csvContent = csvHeaders.join(',') + '\n' + csvRow.join(',');
-const csvDataUri = `data:text/csv;charset=utf-8,${encodeURIComponent(csvContent)}`;
+// ── CSV download (mirrors the rendered All Data table) ─────────────
+const allDataCsvUri = buildAllDataCsv(
+  allDataRows.map((r): AllDataRowShared => ({
+    group: r.group,
+    rawKey: r.key,
+    label: r.label,
+    value: r.value,
+    bmMedian: r.bmMedian,
+    percentile: r.percentile,
+  }))
+);
 
 // ── Section navigation ──────────────────────────────────────────────
 
@@ -380,7 +387,6 @@ const relatedOverflow = related.length - 50;
   </div>
 
   <div class="actions-bar">
-    <a href={csvDataUri} download={`county_${fips}_raw.csv`} class="btn">Download Raw CSV</a>
     <button class="btn" id="pin-btn" data-entity-type="county" data-entity-id={fips} data-entity-name={`${name}, ${state}`}>
       Pin to Workspace
     </button>
@@ -865,6 +871,11 @@ const relatedOverflow = related.length - 50;
       <p class="section-help">
         Every labeled metric surfaced from Geographic Variation, PLACES, and SDOH,
         alongside the national county median for context.
+      </p>
+      <p style="margin-bottom: 0.75rem;">
+        <a href={allDataCsvUri} download={`county_${fips}_all_data.csv`} class="btn">
+          Download CSV
+        </a>
       </p>
       <details>
         <summary style="cursor: pointer; color: var(--color-primary); margin-bottom: 0.75rem;">

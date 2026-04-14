@@ -7,6 +7,11 @@ import {
   MULTI_PATHWAY_MEASURES, getCoveredKeys,
   type FieldDef, type FieldFormat, type PivotTableDef, type Section,
 } from '../../config/aco-fields';
+import {
+  buildAllDataCsv,
+  pctlClass as allDataPctlClass,
+  type AllDataRow,
+} from '../../config/all-data';
 
 // ── Load benchmark and peer cohort data (shared across all ACO pages) ──
 
@@ -324,11 +329,79 @@ const qualityRows = buildQualityRows();
 const coveredKeys = getCoveredKeys();
 const uncoveredEntries = Object.entries(rawData).filter(([key]) => !coveredKeys.has(key));
 
-// Build CSV for download
-const csvHeaders = Object.keys(rawData);
-const csvRow = csvHeaders.map((h: string) => `"${(String(rawData[h]) || '').replace(/"/g, '""')}"`);
-const csvContent = csvHeaders.join(',') + '\n' + csvRow.join(',');
-const csvDataUri = `data:text/csv;charset=utf-8,${encodeURIComponent(csvContent)}`;
+// ── Build "All Data" rows (drives the All Data section + CSV) ──────
+
+// Collect all known raw-key → label mappings from the ACO field config.
+const rawLabelByKey = new Map<string, { label: string; format: FieldFormat; group: string }>();
+
+for (const section of ACO_SECTIONS) {
+  if (section.fields) {
+    for (const f of section.fields) {
+      rawLabelByKey.set(f.key, { label: f.label, format: f.format, group: section.title });
+    }
+  }
+  if (section.pivot) {
+    const { fieldPrefix, segments, periods, format } = section.pivot;
+    for (const seg of segments) {
+      for (const per of periods) {
+        const key = `${fieldPrefix}${seg.code}_${per.code}`;
+        rawLabelByKey.set(key, {
+          label: `${seg.label} (${per.label})`,
+          format,
+          group: section.title,
+        });
+      }
+    }
+  }
+}
+for (const seg of DEMOG_RISK_PIVOT.segments) {
+  for (const per of DEMOG_RISK_PIVOT.periods) {
+    const key = `${DEMOG_RISK_PIVOT.fieldPrefix}${seg.code}_${per.code}`;
+    rawLabelByKey.set(key, {
+      label: `${seg.label} (${per.label})`,
+      format: DEMOG_RISK_PIVOT.format,
+      group: 'Demographic Risk Scores',
+    });
+  }
+}
+for (const w of RISK_WEIGHTS) {
+  rawLabelByKey.set(w.key, { label: w.label, format: w.format, group: 'Risk Redistribution Weights' });
+}
+for (const flag of QUALITY_FLAGS) {
+  rawLabelByKey.set(flag.key, { label: flag.label, format: 'boolean', group: 'Quality Reporting Flags' });
+}
+rawLabelByKey.set('ACO_ID', { label: 'ACO ID', format: 'text', group: 'Program Structure' });
+rawLabelByKey.set('ACO_Name', { label: 'ACO Name', format: 'text', group: 'Program Structure' });
+
+const allDataRows: AllDataRow[] = [];
+
+for (const [key, val] of Object.entries(rawData)) {
+  if (val === null || val === undefined) continue;
+  const s = String(val).trim();
+  if (s === '') continue;
+  const meta = rawLabelByKey.get(key);
+  const group = meta?.group || 'Other Raw Fields';
+  const label = meta?.label || key;
+  const format = meta?.format || 'text';
+  const display = fmtRaw(s, format);
+  const bmEntry = bm[key];
+  const p = acoRanks[key];
+  allDataRows.push({
+    group,
+    rawKey: key,
+    label,
+    value: display,
+    bmMedian: bmEntry && typeof bmEntry.p50 === 'number' ? fmtRaw(String(bmEntry.p50), format) : '\u2014',
+    percentile: typeof p === 'number' ? p : undefined,
+  });
+}
+
+allDataRows.sort((a, b) => {
+  if (a.group !== b.group) return a.group.localeCompare(b.group);
+  return a.label.localeCompare(b.label);
+});
+
+const allDataCsvUri = buildAllDataCsv(allDataRows);
 
 const provenance = manifest.provenance?.[0];
 
@@ -365,9 +438,6 @@ function badgeClass(type: string): string {
   </div>
 
   <div class="actions-bar">
-    <a href={csvDataUri} download={`aco_${id}_mssp_performance.csv`} class="btn">
-      Download CSV
-    </a>
     <button class="btn" id="pin-btn" data-entity-type="aco" data-entity-id={id} data-entity-name={name}>
       Pin to Workspace
     </button>
@@ -403,6 +473,7 @@ function badgeClass(type: string): string {
     {participants && participants.length > 0 && <a href="#network-participants">Participants</a>}
     {snfAffiliates && snfAffiliates.length > 0 && <a href="#snf-affiliates">SNF Affiliates</a>}
     {peerCohort && <a href="#peer-cohort">Peer Cohort</a>}
+    {allDataRows.length > 0 && <a href="#all-data">All Data</a>}
   </nav>
 
   {/* Benchmark legend */}
@@ -1264,6 +1335,56 @@ function badgeClass(type: string): string {
           </li>
         ))}
       </ul>
+    </div>
+  )}
+
+  {allDataRows.length > 0 && (
+    <div class="aco-section" id="all-data">
+      <h2>All Data</h2>
+      <p class="section-help">
+        Every labeled MSSP field for this ACO, with national medians and
+        percentiles where a benchmark is available.
+      </p>
+      <p style="margin-bottom: 0.75rem;">
+        <a href={allDataCsvUri} download={`aco_${id}_all_data.csv`} class="btn">
+          Download CSV
+        </a>
+      </p>
+      <details>
+        <summary style="cursor: pointer; color: var(--color-primary); margin-bottom: 0.75rem;">
+          Show {allDataRows.length.toLocaleString()} rows
+        </summary>
+        <div style="overflow-x: auto;">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Source</th>
+                <th>Metric</th>
+                <th style="text-align:right;">Value</th>
+                <th style="text-align:right;">National Median</th>
+                <th>Pctl.</th>
+                <th>Raw key</th>
+              </tr>
+            </thead>
+            <tbody>
+              {allDataRows.map(r => (
+                <tr>
+                  <td style="font-size: 0.8rem; color: var(--color-text-muted);">{r.group}</td>
+                  <td style="font-weight: 500;">{r.label}</td>
+                  <td style="text-align:right; font-variant-numeric:tabular-nums;">{r.value}</td>
+                  <td class="bm-col" style="text-align:right;">{r.bmMedian}</td>
+                  <td>
+                    {r.percentile !== undefined && (
+                      <span class={`pctl-badge ${allDataPctlClass(r.percentile)}`}>p{r.percentile}</span>
+                    )}
+                  </td>
+                  <td><code style="font-size: 0.75rem;">{r.rawKey}</code></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </details>
     </div>
   )}
 

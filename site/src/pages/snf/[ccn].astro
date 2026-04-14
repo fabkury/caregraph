@@ -2,6 +2,12 @@
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import fs from 'node:fs';
 import path from 'node:path';
+import {
+  buildAllDataCsv,
+  heuristicFormat,
+  pctlClass as allDataPctlClass,
+  type AllDataRow,
+} from '../../config/all-data';
 
 export function getStaticPaths() {
   const siteDataDir = path.resolve(process.cwd(), '..', 'site_data', 'snf');
@@ -41,12 +47,6 @@ const ratings = [
   { label: 'Staffing', value: parseRating(manifest.staffing_rating) },
 ];
 
-// Build the CSV data for download
-const csvHeaders = Object.keys(providerInfo);
-const csvRow = csvHeaders.map((h: string) => `"${(providerInfo[h] || '').replace(/"/g, '""')}"`);
-const csvContent = csvHeaders.join(',') + '\n' + csvRow.join(',');
-const csvDataUri = `data:text/csv;charset=utf-8,${encodeURIComponent(csvContent)}`;
-
 // Provenance info
 const provenance = manifest.provenance?.[0];
 
@@ -55,6 +55,74 @@ const penalties = manifest.data?.penalties || null;
 const deficiencies = manifest.data?.deficiencies || null;
 const ownership = manifest.data?.ownership || null;
 const costReport = manifest.data?.cost_report || null;
+
+// ── Build "All Data" rows (drives the All Data section + CSV) ──────
+
+const SNF_GROUP_LABELS: Record<string, string> = {
+  provider_info: 'Provider Information',
+  penalties: 'Penalties',
+  deficiencies: 'Deficiencies',
+  ownership: 'Ownership',
+  cost_report: 'Cost Report',
+};
+
+const allDataRows: AllDataRow[] = [];
+
+// Provider info — CMS ships these with human-readable CSV headers already.
+for (const [k, v] of Object.entries(providerInfo)) {
+  if (v === null || v === undefined) continue;
+  const s = String(v).trim();
+  allDataRows.push({
+    group: SNF_GROUP_LABELS.provider_info,
+    rawKey: k,
+    label: k,
+    value: s === '' ? '\u2014' : s,
+    bmMedian: '\u2014',
+    percentile: undefined,
+  });
+}
+
+// Any other data.* subkey — flatten generically.
+const handledSnfKeys = new Set(['provider_info']);
+for (const [dsKey, ds] of Object.entries(manifest.data || {})) {
+  if (handledSnfKeys.has(dsKey)) continue;
+  const groupLabel = SNF_GROUP_LABELS[dsKey] || dsKey.replace(/_/g, ' ');
+  if (Array.isArray(ds)) {
+    for (const row of ds) {
+      if (!row || typeof row !== 'object') continue;
+      for (const [k, v] of Object.entries(row as Record<string, any>)) {
+        if (v === null || v === undefined || v === '') continue;
+        allDataRows.push({
+          group: groupLabel,
+          rawKey: k,
+          label: k,
+          value: heuristicFormat(v, k),
+          bmMedian: '\u2014',
+          percentile: undefined,
+        });
+      }
+    }
+  } else if (ds && typeof ds === 'object') {
+    for (const [k, v] of Object.entries(ds as Record<string, any>)) {
+      if (v === null || v === undefined || v === '') continue;
+      allDataRows.push({
+        group: groupLabel,
+        rawKey: k,
+        label: k,
+        value: heuristicFormat(v, k),
+        bmMedian: '\u2014',
+        percentile: undefined,
+      });
+    }
+  }
+}
+
+allDataRows.sort((a, b) => {
+  if (a.group !== b.group) return a.group.localeCompare(b.group);
+  return a.label.localeCompare(b.label);
+});
+
+const allDataCsvUri = buildAllDataCsv(allDataRows);
 
 // Payer mix percentages
 const medicarePct = costReport?.medicare_pct ?? null;
@@ -94,19 +162,11 @@ function badgeClass(type: string): string {
   </div>
 
   <div class="actions-bar">
-    <div class="mode-toggle" id="mode-toggle">
-      <button class="active" data-mode="explore">Explore</button>
-      <button data-mode="table">Table</button>
-    </div>
-    <a href={csvDataUri} download={`snf_${ccn}_provider_info.csv`} class="btn">
-      Download CSV
-    </a>
     <button class="btn" id="pin-btn" data-entity-type="snf" data-entity-id={ccn} data-entity-name={name}>
       Pin to Workspace
     </button>
   </div>
 
-  <!-- Explore mode -->
   <div id="explore-view">
     <div class="card">
       <h2>Overview</h2>
@@ -336,78 +396,55 @@ function badgeClass(type: string): string {
     </div>
   </div>
 
-  <!-- Table mode -->
-  <div id="table-view" style="display: none;">
-    <div class="card">
-      <h2>All Provider Info Fields</h2>
-      <div style="overflow-x: auto;">
-        <table class="data-table" id="data-table">
-          <thead>
-            <tr>
-              <th>Field</th>
-              <th>Value</th>
-            </tr>
-          </thead>
-          <tbody>
-            {Object.entries(providerInfo).map(([key, value]) => (
+  {allDataRows.length > 0 && (
+    <div class="aco-section" id="all-data">
+      <h2>All Data</h2>
+      <p class="section-help">
+        Every labeled field shipped for this facility by CMS, with national
+        medians and percentiles where a benchmark is available.
+      </p>
+      <p style="margin-bottom: 0.75rem;">
+        <a href={allDataCsvUri} download={`snf_${ccn}_all_data.csv`} class="btn">
+          Download CSV
+        </a>
+      </p>
+      <details>
+        <summary style="cursor: pointer; color: var(--color-primary); margin-bottom: 0.75rem;">
+          Show {allDataRows.length.toLocaleString()} rows
+        </summary>
+        <div style="overflow-x: auto;">
+          <table class="data-table">
+            <thead>
               <tr>
-                <td style="font-weight: 500;">{key}</td>
-                <td>{value as string || '\u2014'}</td>
+                <th>Source</th>
+                <th>Metric</th>
+                <th style="text-align:right;">Value</th>
+                <th style="text-align:right;">National Median</th>
+                <th>Pctl.</th>
+                <th>Raw key</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody>
+              {allDataRows.map(r => (
+                <tr>
+                  <td style="font-size: 0.8rem; color: var(--color-text-muted);">{r.group}</td>
+                  <td style="font-weight: 500;">{r.label}</td>
+                  <td style="text-align:right; font-variant-numeric:tabular-nums;">{r.value}</td>
+                  <td class="bm-col" style="text-align:right;">{r.bmMedian}</td>
+                  <td>
+                    {r.percentile !== undefined && (
+                      <span class={`pctl-badge ${allDataPctlClass(r.percentile)}`}>p{r.percentile}</span>
+                    )}
+                  </td>
+                  <td><code style="font-size: 0.75rem;">{r.rawKey}</code></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </details>
     </div>
-  </div>
-
-  <script>
-    // Mode toggle
-    const toggle = document.getElementById('mode-toggle');
-    const exploreView = document.getElementById('explore-view');
-    const tableView = document.getElementById('table-view');
-
-    if (toggle && exploreView && tableView) {
-      const buttons = toggle.querySelectorAll('button');
-      const savedMode = localStorage.getItem('caregraph-mode') || 'explore';
-      setMode(savedMode);
-
-      buttons.forEach(btn => {
-        btn.addEventListener('click', () => {
-          const mode = btn.getAttribute('data-mode') || 'explore';
-          setMode(mode);
-          localStorage.setItem('caregraph-mode', mode);
-        });
-      });
-
-      function setMode(mode: string) {
-        buttons.forEach(b => b.classList.toggle('active', b.getAttribute('data-mode') === mode));
-        exploreView!.style.display = mode === 'explore' ? '' : 'none';
-        tableView!.style.display = mode === 'table' ? '' : 'none';
-      }
-    }
-
-    // Simple table sorting
-    const table = document.getElementById('data-table') as HTMLTableElement | null;
-    if (table) {
-      const headers = table.querySelectorAll('th');
-      headers.forEach((header, index) => {
-        header.addEventListener('click', () => {
-          const tbody = table.querySelector('tbody');
-          if (!tbody) return;
-          const rows = Array.from(tbody.querySelectorAll('tr'));
-          const ascending = header.getAttribute('data-sort') !== 'asc';
-          header.setAttribute('data-sort', ascending ? 'asc' : 'desc');
-          rows.sort((a, b) => {
-            const aVal = a.cells[index]?.textContent || '';
-            const bVal = b.cells[index]?.textContent || '';
-            return ascending ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
-          });
-          rows.forEach(row => tbody.appendChild(row));
-        });
-      });
-    }
-  </script>
+  )}
 
   <script>
     import { isPinned, addPin, removePin } from '../../scripts/workspace';

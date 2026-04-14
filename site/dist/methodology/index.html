@@ -1,10 +1,10 @@
-<!DOCTYPE html><html lang="en"> <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="description" content="How CareGraph processes, validates, and presents CMS and CDC public data."><title>Methodology | CareGraph</title><link rel="icon" type="image/svg+xml" href="/favicon.svg"><link rel="stylesheet" href="/_astro/about.BK-MpkjY.css">
+<!DOCTYPE html><html lang="en"> <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="description" content="How CareGraph processes, validates, and presents CMS and CDC public data."><title>Methodology | CareGraph</title><link rel="icon" type="image/svg+xml" href="/favicon.svg"><link rel="stylesheet" href="/_astro/about.CJaTpFfQ.css">
 <style>.entity-summary[data-astro-cid-fuil4oi4]{display:flex;flex-wrap:wrap;gap:.75rem;margin-top:1rem}.entity-chip[data-astro-cid-fuil4oi4]{display:flex;align-items:center;gap:.4rem;background:var(--color-bg-subtle, #f6f8fa);border:1px solid var(--color-border, #d0d7de);border-radius:6px;padding:.3rem .6rem}.chip-counts[data-astro-cid-fuil4oi4]{font-size:.8rem;color:var(--color-text-muted)}.dataset-count[data-astro-cid-fuil4oi4]{font-weight:400;font-size:.9rem;color:var(--color-text-muted);margin-left:.3rem}.badge-role-base[data-astro-cid-fuil4oi4]{background:#1a7f37;color:#fff;font-size:.7rem;padding:.1rem .4rem;border-radius:3px}.badge-role-enrichment[data-astro-cid-fuil4oi4]{background:#0969da;color:#fff;font-size:.7rem;padding:.1rem .4rem;border-radius:3px}.badge-role-crosslink[data-astro-cid-fuil4oi4]{background:#8250df;color:#fff;font-size:.7rem;padding:.1rem .4rem;border-radius:3px}
-</style></head> <body> <a href="#main-content" class="skip-link">Skip to main content</a> <nav class="nav" role="navigation" aria-label="Main navigation"> <div class="nav-inner"> <a href="/" class="nav-logo">CareGraph</a> <button class="nav-toggle" aria-label="Toggle menu" aria-expanded="false">&#9776;</button> <div class="nav-links"> <a href="/">Home</a> <a href="#">Explore</a> <a href="/map/">Maps</a> <a href="/methodology/">Methodology</a> <a href="/workspace/">Workspace</a> <a href="/about/">About</a> </div> <div class="nav-search" role="search" aria-label="Search"> <input type="text" id="nav-search-input" placeholder="Search..." aria-label="Search CareGraph"> </div> </div> </nav> <main class="main" role="main" id="main-content">  <div class="page-header" data-astro-cid-fuil4oi4> <h1 data-astro-cid-fuil4oi4>Methodology</h1> <p class="subtitle" data-astro-cid-fuil4oi4>How CareGraph processes, validates, and presents public healthcare data.</p> </div> <div class="card" data-astro-cid-fuil4oi4> <h2 data-astro-cid-fuil4oi4>Our Approach: Trust-First Design</h2> <p data-astro-cid-fuil4oi4>
+</style></head> <body> <a href="#main-content" class="skip-link">Skip to main content</a> <nav class="nav" role="navigation" aria-label="Main navigation"> <div class="nav-inner"> <a href="/" class="nav-logo">CareGraph</a> <button class="nav-toggle" aria-label="Toggle menu" aria-expanded="false">&#9776;</button> <div class="nav-links"> <a href="/">Home</a> <a href="/workspace/">Workspace</a> <a href="/methodology/">Methodology</a> <a href="/about/">About</a> </div> </div> </nav> <main class="main" role="main" id="main-content">  <div class="page-header" data-astro-cid-fuil4oi4> <h1 data-astro-cid-fuil4oi4>Methodology</h1> <p class="subtitle" data-astro-cid-fuil4oi4>How CareGraph processes, validates, and presents public healthcare data.</p> </div> <div class="card" data-astro-cid-fuil4oi4> <h2 data-astro-cid-fuil4oi4>Our Approach: Trust-First Design</h2> <p data-astro-cid-fuil4oi4>
 CareGraph exists because public healthcare data should be publicly accessible — not locked
       behind vendor portals, paywalls, or impenetrable government websites. Every number on this
-      site comes from an official CMS, CDC, or Medicaid dataset. We do not model, predict, or
-      editorialize the data; we clean it, connect it, and present it with full provenance.
+      site comes from an official CMS, CDC, or Medicaid dataset. We do not editorialize the data;
+      we clean it, connect it, and present it with full provenance.
 </p> <p data-astro-cid-fuil4oi4>
 Trust-first design means three things:
 </p> <ul data-astro-cid-fuil4oi4> <li data-astro-cid-fuil4oi4> <strong data-astro-cid-fuil4oi4>Provenance on every page.</strong> Every entity page shows exactly which dataset
@@ -51,19 +51,95 @@ Across all datasets, the following systemic limitations apply:
 </li> <li data-astro-cid-fuil4oi4> <strong data-astro-cid-fuil4oi4>Claims-based identification.</strong> Chronic conditions, complications, and
         readmissions are identified from billing claims, not clinical records. Coding practices
         vary across providers and can affect reported rates independently of actual clinical events.
-</li> </ul> </div> <div class="card" data-astro-cid-fuil4oi4> <h2 data-astro-cid-fuil4oi4>ETL Pipeline</h2> <p data-astro-cid-fuil4oi4>
-The CareGraph ETL (Extract, Transform, Load) pipeline runs as a single Python script that:
-</p> <ol data-astro-cid-fuil4oi4> <li data-astro-cid-fuil4oi4>Downloads 29 raw CSV files from data.cms.gov, data.cdc.gov, and data.medicaid.gov APIs</li> <li data-astro-cid-fuil4oi4>Builds base entity manifests for 7 entity types (one JSON file per hospital, SNF, county, ACO, drug, condition, or DRG)</li> <li data-astro-cid-fuil4oi4>Enriches entities with quality measures, financial data, penalties, patient experience scores, cost reports, and drug pricing from supplementary datasets</li> <li data-astro-cid-fuil4oi4>Builds cross-links between related entities (hospitals in ACOs, SNF affiliates, beneficiaries by county)</li> <li data-astro-cid-fuil4oi4>Generates a search index for the site-wide search feature</li> <li data-astro-cid-fuil4oi4>Writes a manifest index (<code data-astro-cid-fuil4oi4>site_data/index.json</code>) with pipeline metadata and provenance</li> </ol> <p data-astro-cid-fuil4oi4>
-The pipeline is idempotent: re-running it on the same day skips already-downloaded files.
-      All source data is stored with content-addressable filenames
-      (<code data-astro-cid-fuil4oi4>{dataset_id}_{date}.csv</code>) to enable reproducibility.
+</li> </ul> </div> <div class="card" data-astro-cid-fuil4oi4> <h2 data-astro-cid-fuil4oi4>Build Pipeline: From Raw Data to Published Site</h2> <p data-astro-cid-fuil4oi4>
+Producing CareGraph end-to-end takes three orchestrated stages: a Python data pipeline,
+      an AI-assisted editorial pipeline, and a static site build deployed to GitHub Pages.
+      Every stage is open source, idempotent, and reproducible from the same raw CSVs.
+</p> <h3 style="margin-top: 1.25rem;" data-astro-cid-fuil4oi4>Stage 1 — Data pipeline (<code data-astro-cid-fuil4oi4>etl/run.py</code>)</h3> <p data-astro-cid-fuil4oi4>
+A single Python orchestrator walks through roughly eighteen numbered steps. In order:
+</p> <ol data-astro-cid-fuil4oi4> <li data-astro-cid-fuil4oi4> <strong data-astro-cid-fuil4oi4>Acquire.</strong> Downloads 29 raw CSV files from data.cms.gov,
+        data.cdc.gov, and data.medicaid.gov APIs. Files are stored with content-addressable
+        names (<code data-astro-cid-fuil4oi4>{dataset_id}_{YYYY-MM-DD}.csv</code>) under <code data-astro-cid-fuil4oi4>data/raw/</code>;
+        re-running on the same day skips already-downloaded files. Previous vintages are
+        preserved rather than overwritten.
+</li> <li data-astro-cid-fuil4oi4> <strong data-astro-cid-fuil4oi4>Normalize join keys.</strong> CCNs are zero-padded to 6 characters, FIPS codes
+        to 5 digits, NPIs to 10 digits. SSA state/county codes are converted to FIPS.
+</li> <li data-astro-cid-fuil4oi4> <strong data-astro-cid-fuil4oi4>Build base entity manifests</strong> for all 7 entity types — Hospitals, SNFs,
+        Counties, ACOs, Drugs, Conditions, and DRGs — one JSON manifest per entity, written
+        to <code data-astro-cid-fuil4oi4>site_data/{entity}/{id}.json</code>.
+</li> <li data-astro-cid-fuil4oi4> <strong data-astro-cid-fuil4oi4>Enrich entities</strong> with supplementary datasets: HRRP/HVBP penalties,
+        HCAHPS patient experience, HAI infection ratios, complications, timely &amp; effective
+        care, MSPB spending, HAC reduction, hospital and SNF cost reports, nursing-home
+        penalties and deficiencies and ownership, ACO participants and SNF affiliates,
+        county-level CDC PLACES prevalence and SDOH indicators, Part D / Part B drug
+        spending, Part B discarded units, and NADAC acquisition prices.
+</li> <li data-astro-cid-fuil4oi4> <strong data-astro-cid-fuil4oi4>Cross-link entities</strong> — hospitals ↔ ACOs, SNFs ↔ ACOs, ACOs ↔ counties
+        (beneficiary assignment), hospitals ↔ counties, drugs ↔ DRGs. Cross-links are written
+        back into each side's manifest so entity pages render without runtime joins.
+</li> <li data-astro-cid-fuil4oi4> <strong data-astro-cid-fuil4oi4>Compute benchmarks and peer cohorts</strong> for ACOs, hospitals, and counties.
+        Peer cohorts are built by matching ACOs on assigned-beneficiary size, region, and
+        track so individual ACO pages can show "how does this compare to similar ACOs?"
+        without client-side computation.
+</li> <li data-astro-cid-fuil4oi4> <strong data-astro-cid-fuil4oi4>Derive precomputed views.</strong> Search index, map choropleth layers
+        (county-level), compare-mode summaries, and the paginated Explore-table indexes are
+        all built as static JSON artifacts.
+</li> <li data-astro-cid-fuil4oi4> <strong data-astro-cid-fuil4oi4>Validate &amp; package.</strong> Pydantic schemas validate every manifest.
+        A provenance envelope (dataset ID, download date, source URL, row count, ETL
+        version) is attached to each enriched field. The pipeline writes
+<code data-astro-cid-fuil4oi4>site_data/index.json</code> with run-level metadata.
+</li> </ol> <h3 style="margin-top: 1.25rem;" data-astro-cid-fuil4oi4>Stage 2 — Editorial pipeline (<code data-astro-cid-fuil4oi4>etl/editorial/run.py</code>)</h3> <p data-astro-cid-fuil4oi4>
+Every dataset gets a dedicated methodology page. These pages are drafted by a large
+      language model under tight constraints, not hand-written, so they can scale to dozens
+      of datasets while staying consistent in structure. The editorial orchestrator:
+</p> <ol data-astro-cid-fuil4oi4> <li data-astro-cid-fuil4oi4>
+Iterates each registered dataset and loads a shared prompt template
+        (<code data-astro-cid-fuil4oi4>etl/editorial/prompts/dataset_methodology.txt</code>) plus a dataset-specific
+        hints file (<code data-astro-cid-fuil4oi4>etl/editorial/hints/{dataset_id}.md</code>) curated by the
+        maintainer to pin down known caveats, join keys, suppression rules, and reporting
+        lags.
+</li> <li data-astro-cid-fuil4oi4>
+Substitutes dataset metadata (name, entity type, row count from the ETL's
+<code data-astro-cid-fuil4oi4>index.json</code>, join-key format, field count, suppression notes) into the
+        template and invokes the Claude CLI (<code data-astro-cid-fuil4oi4>claude -p</code>) to generate the page.
+</li> <li data-astro-cid-fuil4oi4> <strong data-astro-cid-fuil4oi4>Validates</strong> the generated markdown against required sections
+        (Overview, Join Strategy, Known Limitations, Data Quality Notes), minimum length,
+        and forbidden-phrase rules. Failed validation is flagged, not silently accepted.
+</li> <li data-astro-cid-fuil4oi4>
+Writes a checkpoint (<code data-astro-cid-fuil4oi4>etl/editorial/.checkpoint.json</code>) so successful
+        generations are not regenerated on the next run — keeping costs bounded and making
+        the pipeline resumable after transient failures. A <code data-astro-cid-fuil4oi4>--force</code> flag
+        regenerates everything; <code data-astro-cid-fuil4oi4>--skip-ai</code> produces template placeholders
+        without calling the model.
+</li> <li data-astro-cid-fuil4oi4>
+Stage 1 then copies <code data-astro-cid-fuil4oi4>etl/editorial/output/*.md</code> into
+<code data-astro-cid-fuil4oi4>site_data/editorial/</code> where the Astro build picks them up.
+</li> </ol> <p style="font-size: 0.9rem;" data-astro-cid-fuil4oi4>
+Of 29 datasets, <strong data-astro-cid-fuil4oi4>29</strong> currently have a
+      generated methodology page. The editorial layer describes the data; it does not invent,
+      reinterpret, or summarize any numbers shown on entity pages.
+</p> <h3 style="margin-top: 1.25rem;" data-astro-cid-fuil4oi4>Stage 3 — Static site build &amp; deploy</h3> <ol data-astro-cid-fuil4oi4> <li data-astro-cid-fuil4oi4> <strong data-astro-cid-fuil4oi4>Astro static build</strong> (<code data-astro-cid-fuil4oi4>site/</code>, run with <code data-astro-cid-fuil4oi4>npm run build</code>).
+        Astro reads the JSON manifests in <code data-astro-cid-fuil4oi4>site_data/</code> plus the generated editorial
+        markdown and renders a static HTML page for every entity, dataset methodology page,
+        explore table, map, and index. No server-side rendering, no runtime database, no
+        API calls from the browser — just precomputed HTML and JSON.
+</li> <li data-astro-cid-fuil4oi4> <strong data-astro-cid-fuil4oi4>Commit &amp; push.</strong> The built <code data-astro-cid-fuil4oi4>site/dist/</code> directory is
+        checked into the repository on <code data-astro-cid-fuil4oi4>main</code>.
+</li> <li data-astro-cid-fuil4oi4> <strong data-astro-cid-fuil4oi4>GitHub Pages deploy.</strong> A GitHub Actions workflow
+        (<code data-astro-cid-fuil4oi4>.github/workflows/deploy.yml</code>) publishes <code data-astro-cid-fuil4oi4>site/dist/</code> to
+        GitHub Pages on every push. The custom domain <strong data-astro-cid-fuil4oi4>caregraph.org</strong> is
+        configured via <code data-astro-cid-fuil4oi4>site/public/CNAME</code>.
+</li> </ol> <p style="margin-top: 1rem; font-size: 0.9rem; color: var(--color-text-muted);" data-astro-cid-fuil4oi4>
+The full pipeline — from an empty checkout to a deployable site — is a handful of
+      commands: <code data-astro-cid-fuil4oi4>pip install -e .</code>, <code data-astro-cid-fuil4oi4>python etl/run.py</code>,
+<code data-astro-cid-fuil4oi4>python etl/editorial/run.py</code>, <code data-astro-cid-fuil4oi4>cd site &amp;&amp; npm install &amp;&amp; npm run build</code>.
+      Anyone can re-run it against the same raw CSVs and verify the outputs byte-for-byte.
 </p> </div> <div class="card" data-astro-cid-fuil4oi4> <h2 data-astro-cid-fuil4oi4>Report an Error</h2> <p data-astro-cid-fuil4oi4>
 If you find incorrect data, a missing entity, or a methodology concern, please
 <a href="https://github.com/fabkury/caregraph/issues/new?template=error_report.md" data-astro-cid-fuil4oi4>
 file an error report
 </a>
 on GitHub. We review every report and publish corrections with full changelog entries.
-</p> </div>  </main> <script type="module">const t=document.getElementById("nav-search-input");t&&t.addEventListener("keydown",e=>{if(e.key==="Enter"){const o=t.value.trim();o&&(window.location.href=`/search?q=${encodeURIComponent(o)}`)}});const n=document.querySelector(".nav-toggle"),i=document.querySelector(".nav-links");n&&i&&n.addEventListener("click",()=>{const e=i.classList.toggle("open");n.setAttribute("aria-expanded",String(e)),n.innerHTML=e?"&#10005;":"&#9776;"});</script> <footer class="footer" role="contentinfo"> <div class="footer-inner"> <div>
+</p> </div>  </main> <script type="module">const e=document.querySelector(".nav-toggle"),t=document.querySelector(".nav-links");e&&t&&e.addEventListener("click",()=>{const n=t.classList.toggle("open");e.setAttribute("aria-expanded",String(n)),e.innerHTML=n?"&#10005;":"&#9776;"});</script> <footer class="footer" role="contentinfo"> <div class="footer-inner"> <div>
 MIT License. Free. No ads. No login.
 </div> <div> <a href="https://github.com/fabkury/caregraph" target="_blank" rel="noopener">GitHub</a>
 &middot;

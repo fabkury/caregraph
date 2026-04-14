@@ -12,6 +12,12 @@ import {
   BENCHMARK_KEYS,
   type HrrpCondition,
 } from '../../config/hospital-fields';
+import {
+  buildAllDataCsv,
+  heuristicFormat,
+  pctlClass as allDataPctlClass,
+  type AllDataRow,
+} from '../../config/all-data';
 
 // ── Load benchmark data (shared across all hospital pages) ──────────
 
@@ -141,12 +147,148 @@ const starDomainData = STAR_DOMAINS.map(domain => {
   return { domain, groupCount, facilityCount, better, noDiff, worse };
 }).filter(d => d.facilityCount > 0);
 
-// ── CSV download ────────────────────────────────────────────────────
+// ── Build "All Data" rows (drives the All Data section + CSV) ──────
 
-const csvHeaders = Object.keys(generalInfo);
-const csvRow = csvHeaders.map((h: string) => `"${(generalInfo[h] || '').replace(/"/g, '""')}"`);
-const csvContent = csvHeaders.join(',') + '\n' + csvRow.join(',');
-const csvDataUri = `data:text/csv;charset=utf-8,${encodeURIComponent(csvContent)}`;
+const HOSPITAL_GROUP_LABELS: Record<string, string> = {
+  general_info: 'General Information',
+  readmissions: 'Readmissions (HRRP)',
+  vbp: 'Value-Based Purchasing',
+  timely_effective_care: 'Timely & Effective Care',
+  complications_deaths: 'Complications & Deaths',
+  hcahps: 'Patient Experience (HCAHPS)',
+  hai: 'Healthcare-Associated Infections',
+  unplanned_visits: 'Unplanned Hospital Visits',
+  mspb: 'Medicare Spending per Beneficiary',
+  hac_reduction: 'HAC Reduction Program',
+  cost_report: 'Cost Report',
+};
+
+const READMISSION_ATTR_LABELS: Record<string, string> = {
+  excess_readmission_ratio: 'Excess readmission ratio',
+  predicted_readmission_rate: 'Predicted readmission rate',
+  expected_readmission_rate: 'Expected readmission rate',
+  num_readmissions: 'Number of readmissions',
+  num_discharges: 'Number of discharges',
+};
+
+const hrrpLabelById: Record<string, string> = {};
+for (const c of HRRP_CONDITIONS) hrrpLabelById[c.measureId] = c.label;
+
+const allDataRows: AllDataRow[] = [];
+
+// General info — CMS ships these with human-readable CSV headers already.
+for (const [k, v] of Object.entries(generalInfo)) {
+  if (v === null || v === undefined) continue;
+  const s = String(v).trim();
+  allDataRows.push({
+    group: HOSPITAL_GROUP_LABELS.general_info,
+    rawKey: k,
+    label: k,
+    value: s === '' ? '\u2014' : s,
+    bmMedian: '\u2014',
+    percentile: undefined,
+  });
+}
+
+// VBP domain scores (labels + benchmarks from hospital_benchmarks.json).
+if (vbp) {
+  for (const d of VBP_DOMAINS) {
+    const val = (vbp as any)[d.key];
+    if (val === null || val === undefined) continue;
+    const bmKey = `vbp.${d.key}`;
+    const bmEntry = bm[bmKey];
+    const p = hospitalRanks[bmKey];
+    allDataRows.push({
+      group: HOSPITAL_GROUP_LABELS.vbp,
+      rawKey: d.key,
+      label: d.label,
+      value: typeof val === 'number' ? val.toFixed(2) : String(val),
+      bmMedian: bmEntry && typeof bmEntry.p50 === 'number' ? bmEntry.p50.toFixed(2) : '\u2014',
+      percentile: typeof p === 'number' ? p : undefined,
+    });
+  }
+}
+
+// Readmissions — one row per HRRP measure × attribute.
+if (readmissions) {
+  for (const [measureId, attrs] of Object.entries(readmissions)) {
+    if (!attrs || typeof attrs !== 'object') continue;
+    const condLabel = hrrpLabelById[measureId] || measureId;
+    for (const [attrKey, val] of Object.entries(attrs as Record<string, any>)) {
+      if (val === null || val === undefined) continue;
+      const bmKey = attrKey === 'excess_readmission_ratio' ? `hrrp.${measureId}` : '';
+      const bmEntry = bmKey ? bm[bmKey] : null;
+      const p = bmKey ? hospitalRanks[bmKey] : undefined;
+      allDataRows.push({
+        group: HOSPITAL_GROUP_LABELS.readmissions,
+        rawKey: `${measureId}.${attrKey}`,
+        label: `${condLabel} — ${READMISSION_ATTR_LABELS[attrKey] || attrKey}`,
+        value: heuristicFormat(val, attrKey),
+        bmMedian: bmEntry && typeof bmEntry.p50 === 'number' ? bmEntry.p50.toFixed(4) : '\u2014',
+        percentile: typeof p === 'number' ? p : undefined,
+      });
+    }
+  }
+}
+
+// Any other data.* subkey — flatten generically so pages don't break when
+// new enrichments land.
+const handledDsKeys = new Set(['general_info', 'vbp', 'readmissions']);
+for (const [dsKey, ds] of Object.entries(manifest.data || {})) {
+  if (handledDsKeys.has(dsKey)) continue;
+  const groupLabel = HOSPITAL_GROUP_LABELS[dsKey] || dsKey.replace(/_/g, ' ');
+  if (Array.isArray(ds)) {
+    for (const row of ds) {
+      if (!row || typeof row !== 'object') continue;
+      const measureId =
+        (row as any)['Measure ID'] || (row as any).measure_id || (row as any)['Measure Name'] || '';
+      for (const [k, v] of Object.entries(row as Record<string, any>)) {
+        if (v === null || v === undefined || v === '') continue;
+        allDataRows.push({
+          group: groupLabel,
+          rawKey: measureId ? `${measureId}.${k}` : k,
+          label: measureId ? `${measureId} — ${k}` : k,
+          value: heuristicFormat(v, k),
+          bmMedian: '\u2014',
+          percentile: undefined,
+        });
+      }
+    }
+  } else if (ds && typeof ds === 'object') {
+    for (const [k, v] of Object.entries(ds as Record<string, any>)) {
+      if (v === null || v === undefined || v === '') continue;
+      if (v !== null && typeof v === 'object' && !Array.isArray(v)) {
+        for (const [kk, vv] of Object.entries(v as Record<string, any>)) {
+          if (vv === null || vv === undefined || vv === '') continue;
+          allDataRows.push({
+            group: groupLabel,
+            rawKey: `${k}.${kk}`,
+            label: `${k} — ${kk}`,
+            value: heuristicFormat(vv, kk),
+            bmMedian: '\u2014',
+            percentile: undefined,
+          });
+        }
+      } else {
+        allDataRows.push({
+          group: groupLabel,
+          rawKey: k,
+          label: k,
+          value: heuristicFormat(v, k),
+          bmMedian: '\u2014',
+          percentile: undefined,
+        });
+      }
+    }
+  }
+}
+
+allDataRows.sort((a, b) => {
+  if (a.group !== b.group) return a.group.localeCompare(b.group);
+  return a.label.localeCompare(b.label);
+});
+
+const allDataCsvUri = buildAllDataCsv(allDataRows);
 
 // ── Section nav items ───────────────────────────────────────────────
 
@@ -165,6 +307,7 @@ if (unplannedVisits && unplannedVisits.length > 0) sections.push({ id: 'unplanne
 if (mspb) sections.push({ id: 'mspb', label: 'Medicare Spending' });
 if (costReport) sections.push({ id: 'financial', label: 'Financial Health' });
 if (related.length > 0) sections.push({ id: 'related', label: 'Related' });
+if (allDataRows.length > 0) sections.push({ id: 'all-data', label: 'All Data' });
 
 // ── Helpers ─────────────────────────────────────────────────────────
 
@@ -205,9 +348,6 @@ function errLabel(err: number | null): string {
   </div>
 
   <div class="actions-bar">
-    <a href={csvDataUri} download={`hospital_${ccn}.csv`} class="btn">
-      Download CSV
-    </a>
     <button class="btn" id="pin-btn" data-entity-type="hospital" data-entity-id={ccn} data-entity-name={name}>
       Pin to Workspace
     </button>
@@ -887,6 +1027,59 @@ function errLabel(err: number | null): string {
           </li>
         ))}
       </ul>
+    </div>
+  )}
+
+  <!-- ═══════════════════════════════════════════════════════════════ -->
+  <!-- ALL DATA                                                        -->
+  <!-- ═══════════════════════════════════════════════════════════════ -->
+  {allDataRows.length > 0 && (
+    <div class="aco-section" id="all-data">
+      <h2>All Data</h2>
+      <p class="section-help">
+        Every labeled metric surfaced for this hospital, with national medians
+        and percentiles where a benchmark is available.
+      </p>
+      <p style="margin-bottom: 0.75rem;">
+        <a href={allDataCsvUri} download={`hospital_${ccn}_all_data.csv`} class="btn">
+          Download CSV
+        </a>
+      </p>
+      <details>
+        <summary style="cursor: pointer; color: var(--color-primary); margin-bottom: 0.75rem;">
+          Show {allDataRows.length.toLocaleString()} rows
+        </summary>
+        <div style="overflow-x: auto;">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Source</th>
+                <th>Metric</th>
+                <th style="text-align:right;">Value</th>
+                <th style="text-align:right;">National Median</th>
+                <th>Pctl.</th>
+                <th>Raw key</th>
+              </tr>
+            </thead>
+            <tbody>
+              {allDataRows.map(r => (
+                <tr>
+                  <td style="font-size: 0.8rem; color: var(--color-text-muted);">{r.group}</td>
+                  <td style="font-weight: 500;">{r.label}</td>
+                  <td style="text-align:right; font-variant-numeric:tabular-nums;">{r.value}</td>
+                  <td class="bm-col" style="text-align:right;">{r.bmMedian}</td>
+                  <td>
+                    {r.percentile !== undefined && (
+                      <span class={`pctl-badge ${allDataPctlClass(r.percentile)}`}>p{r.percentile}</span>
+                    )}
+                  </td>
+                  <td><code style="font-size: 0.75rem;">{r.rawKey}</code></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </details>
     </div>
   )}
 
