@@ -14,6 +14,7 @@ import {
 } from '../../config/hospital-fields';
 import {
   buildAllDataCsv,
+  flattenDataset,
   heuristicFormat,
   pctlClass as allDataPctlClass,
   type AllDataRow,
@@ -232,55 +233,14 @@ if (readmissions) {
 }
 
 // Any other data.* subkey — flatten generically so pages don't break when
-// new enrichments land.
+// new enrichments land. Delegated to shared helper so hospital + SNF emit
+// consistent rows and both handle {value,label} metric envelopes, deeper
+// nesting, and arrays of structured records.
 const handledDsKeys = new Set(['general_info', 'vbp', 'readmissions']);
 for (const [dsKey, ds] of Object.entries(manifest.data || {})) {
   if (handledDsKeys.has(dsKey)) continue;
   const groupLabel = HOSPITAL_GROUP_LABELS[dsKey] || dsKey.replace(/_/g, ' ');
-  if (Array.isArray(ds)) {
-    for (const row of ds) {
-      if (!row || typeof row !== 'object') continue;
-      const measureId =
-        (row as any)['Measure ID'] || (row as any).measure_id || (row as any)['Measure Name'] || '';
-      for (const [k, v] of Object.entries(row as Record<string, any>)) {
-        if (v === null || v === undefined || v === '') continue;
-        allDataRows.push({
-          group: groupLabel,
-          rawKey: measureId ? `${measureId}.${k}` : k,
-          label: measureId ? `${measureId} — ${k}` : k,
-          value: heuristicFormat(v, k),
-          bmMedian: '\u2014',
-          percentile: undefined,
-        });
-      }
-    }
-  } else if (ds && typeof ds === 'object') {
-    for (const [k, v] of Object.entries(ds as Record<string, any>)) {
-      if (v === null || v === undefined || v === '') continue;
-      if (v !== null && typeof v === 'object' && !Array.isArray(v)) {
-        for (const [kk, vv] of Object.entries(v as Record<string, any>)) {
-          if (vv === null || vv === undefined || vv === '') continue;
-          allDataRows.push({
-            group: groupLabel,
-            rawKey: `${k}.${kk}`,
-            label: `${k} — ${kk}`,
-            value: heuristicFormat(vv, kk),
-            bmMedian: '\u2014',
-            percentile: undefined,
-          });
-        }
-      } else {
-        allDataRows.push({
-          group: groupLabel,
-          rawKey: k,
-          label: k,
-          value: heuristicFormat(v, k),
-          bmMedian: '\u2014',
-          percentile: undefined,
-        });
-      }
-    }
-  }
+  flattenDataset(groupLabel, ds, allDataRows);
 }
 
 allDataRows.sort((a, b) => {

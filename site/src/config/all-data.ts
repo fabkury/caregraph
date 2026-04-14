@@ -62,8 +62,15 @@ export function buildAllDataCsv(rows: AllDataRow[]): string {
 /** Treat these scalar sentinel strings as "not reported". */
 const NOT_REPORTED_VALUES = new Set(['', '-', '*', 'N/A', 'Not Available', 'Not Applicable']);
 
-/** Format a raw string or number using a heuristic keyed on the field name. */
-export function heuristicFormat(value: unknown, key: string): string {
+/** Format a raw string or number using a heuristic keyed on the field name.
+ *
+ * `label` is an optional suffix hint: when a metric's display label ends
+ * in "($)" or "(%)", we trust that over the key-name heuristic. This
+ * prevents fields like `cost_to_charge_ratio` (a unitless ratio, label
+ * "Cost-to-Charge Ratio") from being misformatted as currency just
+ * because the key contains the substring "cost".
+ */
+export function heuristicFormat(value: unknown, key: string, label?: string): string {
   if (value === null || value === undefined) return '\u2014';
   if (typeof value === 'boolean') return value ? 'Yes' : 'No';
   const s = String(value).trim();
@@ -73,9 +80,18 @@ export function heuristicFormat(value: unknown, key: string): string {
   if (!isFinite(num)) return s;
 
   const k = key;
-  if (/_PYMT_AMT|_PYMT_PC|_PYMT_PER_USER|dollar|spending|payment|cost|fine|amount/i.test(k))
+  const labelStr = label || '';
+
+  // Label-driven formatting takes priority — it reflects ETL intent.
+  if (/\(\$\)\s*$/.test(labelStr)) return '$' + Math.round(num).toLocaleString();
+  if (/\(%\)\s*$/.test(labelStr)) return num.toFixed(1) + '%';
+  if (/\bratio\b/i.test(labelStr) || /_ratio$/i.test(k) || /\bratio\b/i.test(k)) {
+    return Number.isInteger(num) ? String(num) : num.toFixed(2);
+  }
+
+  if (/_PYMT_AMT|_PYMT_PC|_PYMT_PER_USER|dollar|spending|\bpayment\b|\bcosts?\b|\bfine\b|\bamount\b|\brevenue\b|\bincome\b|\bassets\b|\bliabilities\b|\bbalance\b/i.test(k))
     return '$' + Math.round(num).toLocaleString();
-  if (/_PCT$|_RATE$|percent|rate$/i.test(k))
+  if (/_PCT$|_RATE$|percent|rate$|_share$|\bshare$/i.test(k))
     return (Math.abs(num) <= 1 ? num * 100 : num).toFixed(1) + '%';
   if (/_CNT$|count|number/i.test(k) && Number.isFinite(num))
     return Number.isInteger(num) || num > 50
@@ -84,4 +100,89 @@ export function heuristicFormat(value: unknown, key: string): string {
   if (Number.isInteger(num) && Math.abs(num) >= 1000) return num.toLocaleString();
   if (Number.isFinite(num) && !Number.isInteger(num)) return num.toFixed(2);
   return s;
+}
+
+/**
+ * Generic flattener for a `manifest.data.<dsKey>` subtree. Handles four
+ * shapes so pages don't corrupt the CSV export when new enrichments land:
+ *
+ *   1. scalar                       → emit one row
+ *   2. `{value, label, ...}`        → one row, using .label as label
+ *   3. deeper nested object         → recurse, prefixing the path
+ *   4. array of objects             → one row per (item, field), keyed by
+ *      the item's primary identifier (tag / Measure ID / etc.) so users
+ *      can tell which record a value belongs to after sorting.
+ */
+function isLabeledMetric(v: any): v is { value: any; label?: string } {
+  return v && typeof v === 'object' && !Array.isArray(v) && 'value' in v;
+}
+
+function rowIdentifier(obj: Record<string, any>, fallbackIdx: number): string {
+  const preferred = ['Measure ID', 'measure_id', 'Measure Name', 'tag', 'id', 'code'];
+  for (const k of preferred) {
+    const v = obj[k];
+    if (v !== undefined && v !== null && String(v).trim() !== '') return String(v).trim();
+  }
+  return `#${fallbackIdx + 1}`;
+}
+
+export function flattenDataset(
+  groupLabel: string,
+  node: unknown,
+  rows: AllDataRow[],
+): void {
+  walk('', '', node);
+
+  function walk(pathKey: string, pathLabel: string, n: any): void {
+    if (n === null || n === undefined || n === '') return;
+
+    if (Array.isArray(n)) {
+      for (let i = 0; i < n.length; i++) {
+        const item = n[i];
+        if (!item || typeof item !== 'object' || Array.isArray(item)) {
+          walk(`${pathKey}[${i}]`, `${pathLabel} [${i + 1}]`.trim(), item);
+          continue;
+        }
+        const id = rowIdentifier(item as Record<string, any>, i);
+        for (const [k, v] of Object.entries(item as Record<string, any>)) {
+          if (v === null || v === undefined || v === '') continue;
+          const nextKey = pathKey ? `${pathKey}[${id}].${k}` : `${id}.${k}`;
+          const nextLabel = pathLabel ? `${pathLabel} [${id}] — ${k}` : `${id} — ${k}`;
+          walk(nextKey, nextLabel, v);
+        }
+      }
+      return;
+    }
+
+    if (typeof n === 'object') {
+      if (isLabeledMetric(n)) {
+        if (n.value === null || n.value === undefined || n.value === '') return;
+        const label = n.label && String(n.label).trim() !== '' ? String(n.label) : pathLabel;
+        pushRow(pathKey, label, n.value, label);
+        return;
+      }
+      for (const [k, v] of Object.entries(n as Record<string, any>)) {
+        walk(
+          pathKey ? `${pathKey}.${k}` : k,
+          pathLabel ? `${pathLabel} — ${k}` : k,
+          v,
+        );
+      }
+      return;
+    }
+
+    pushRow(pathKey, pathLabel, n, undefined);
+  }
+
+  function pushRow(pathKey: string, pathLabel: string, value: unknown, formatLabel: string | undefined) {
+    const leafKey = pathKey.split('.').pop() || pathKey;
+    rows.push({
+      group: groupLabel,
+      rawKey: pathKey,
+      label: pathLabel,
+      value: heuristicFormat(value, leafKey, formatLabel),
+      bmMedian: '\u2014',
+      percentile: undefined,
+    });
+  }
 }

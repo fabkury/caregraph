@@ -244,27 +244,32 @@ def _load_hvbp(
         "Total performance score",
         "TPS",
     ])
+    # Each domain exposes both unweighted (0-100) and weighted (0-25 for the
+    # four sub-domains) scores. We always want the weighted value — weighted
+    # domain scores sum to the TPS, so cross-domain comparisons are coherent.
+    # CMS has shipped the column names inconsistently across releases
+    # ("Weighted X Domain Score" vs "Weighted Normalized X Domain Score"),
+    # so list every observed spelling explicitly and match exactly. The
+    # final generic entry is a last-resort substring fallback.
     col_clinical = _find_column(sample, [
-        "Clinical Outcomes Domain Score",
-        "Clinical outcomes domain score",
+        "Weighted Normalized Clinical Outcomes Domain Score",
         "Weighted Clinical Outcomes Domain Score",
+        "Weighted Clinical Care Domain Score",
     ])
     col_safety = _find_column(sample, [
-        "Safety Domain Score",
-        "Safety domain score",
+        "Weighted Normalized Safety Domain Score",
         "Weighted Safety Domain Score",
     ])
     col_person = _find_column(sample, [
-        "Person and Community Engagement Domain Score",
-        "Person & Community Engagement Domain Score",
+        "Weighted Normalized Person And Community Engagement Domain Score",
         "Weighted Person and Community Engagement Domain Score",
-        "Person Community Domain Score",
+        "Weighted Person And Community Engagement Domain Score",
+        "Weighted Person & Community Engagement Domain Score",
     ])
     col_efficiency = _find_column(sample, [
-        "Efficiency and Cost Reduction Domain Score",
-        "Efficiency domain score",
+        "Weighted Normalized Efficiency And Cost Reduction Domain Score",
         "Weighted Efficiency and Cost Reduction Domain Score",
-        "Efficiency Domain Score",
+        "Weighted Efficiency And Cost Reduction Domain Score",
     ])
 
     if col_ccn is None:

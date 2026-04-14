@@ -4,10 +4,25 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {
   buildAllDataCsv,
-  heuristicFormat,
-  pctlClass as allDataPctlClass,
+  flattenDataset,
   type AllDataRow,
 } from '../../config/all-data';
+import {
+  SNF_GROUP_LABELS,
+  STAFFING_ROLES,
+  WEEKEND_STAFFING_FIELDS,
+  TURNOVER_FIELDS,
+  CASE_MIX_FIELDS,
+  SEVERITY_BANDS,
+  severityBand,
+  decodeFootnote,
+  OWNERSHIP_TYPE_COPY,
+  COST_METRICS_OPERATING,
+  COST_METRICS_INCOME,
+  COST_METRICS_BALANCE,
+  formatCostValue,
+  FACILITY_FLAGS,
+} from '../../config/snf-fields';
 
 export function getStaticPaths() {
   const siteDataDir = path.resolve(process.cwd(), '..', 'site_data', 'snf');
@@ -31,44 +46,203 @@ const { manifest } = Astro.props;
 const { ccn } = Astro.params;
 
 const name = manifest.provider_name;
-const providerInfo = manifest.data?.provider_info || {};
+const providerInfo: Record<string, string> = manifest.data?.provider_info || {};
 
-// Star ratings
+// ── Parsing helpers ────────────────────────────────────────────────
+
 function parseRating(val: string | number | null | undefined): number | null {
   if (val === null || val === undefined || val === '' || val === 'Not Available') return null;
   const n = parseInt(String(val));
   return isNaN(n) ? null : n;
 }
 
+function pf(key: string): number | null {
+  const v = providerInfo[key];
+  if (v === undefined || v === null || v === '') return null;
+  const n = Number(String(v).replace(/,/g, ''));
+  return isFinite(n) ? n : null;
+}
+
+function ps(key: string): string {
+  return (providerInfo[key] ?? '').toString().trim();
+}
+
+function fmtHours(v: number | null): string {
+  return v === null ? '\u2014' : v.toFixed(2);
+}
+
+function fmtPercent(v: number | null, digits = 1): string {
+  return v === null ? '\u2014' : v.toFixed(digits) + '%';
+}
+
+function fmtInt(v: number | null): string {
+  return v === null ? '\u2014' : Math.round(v).toLocaleString();
+}
+
+// ── Core fields ────────────────────────────────────────────────────
+
 const ratings = [
-  { label: 'Overall Rating', value: parseRating(manifest.overall_rating) },
-  { label: 'Health Inspection', value: parseRating(manifest.health_inspection_rating) },
-  { label: 'Quality Measures', value: parseRating(manifest.qm_rating) },
-  { label: 'Staffing', value: parseRating(manifest.staffing_rating) },
+  { label: 'Overall Rating', value: parseRating(manifest.overall_rating), footnoteKey: 'Overall Rating Footnote', help: 'Composite of Health Inspection, Staffing, and Quality Measures.' },
+  { label: 'Health Inspection', value: parseRating(manifest.health_inspection_rating), footnoteKey: 'Health Inspection Rating Footnote', help: 'Based on the three most recent standard surveys, with more weight on recent results.' },
+  { label: 'Staffing', value: parseRating(manifest.staffing_rating), footnoteKey: 'Staffing Rating Footnote', help: 'Weighted combination of RN and total nurse staffing hours per resident per day, case-mix adjusted.' },
+  { label: 'Quality Measures', value: parseRating(manifest.qm_rating), footnoteKey: 'QM Rating Footnote', help: '15 resident-level quality measures split between long-stay and short-stay (post-acute) residents.' },
 ];
 
-// Provenance info
-const provenance = manifest.provenance?.[0];
+const qmSub = [
+  { label: 'Long-Stay Quality Measures', value: parseRating(providerInfo['Long-Stay QM Rating']), footnoteKey: 'Long-Stay QM Rating Footnote' },
+  { label: 'Short-Stay Quality Measures', value: parseRating(providerInfo['Short-Stay QM Rating']), footnoteKey: 'Short-Stay QM Rating Footnote' },
+];
 
-// Enrichment data
-const penalties = manifest.data?.penalties || null;
-const deficiencies = manifest.data?.deficiencies || null;
-const ownership = manifest.data?.ownership || null;
+// ── Facility flags (hero badges) ───────────────────────────────────
+
+const activeFlags = FACILITY_FLAGS.filter(f => ps(f.key) === (f.truthyValue ?? 'Y'));
+
+// ── Derived overview numbers ───────────────────────────────────────
+
+const beds = manifest.beds ?? pf('Number of Certified Beds');
+const avgResidents = pf('Average Number of Residents per Day');
+const occupancyDerived = (beds && avgResidents) ? (avgResidents / beds) * 100 : null;
+
+const firstApproval = ps('Date First Approved to Provide Medicare and Medicaid Services');
+
+// ── Staffing data ──────────────────────────────────────────────────
+
+const staffingRows = STAFFING_ROLES.map(role => ({
+  role,
+  reported: pf(role.reportedKey),
+  caseMix: role.caseMixKey ? pf(role.caseMixKey) : null,
+  adjusted: role.adjustedKey ? pf(role.adjustedKey) : null,
+}));
+
+const hasStaffingData = staffingRows.some(r => r.reported !== null || r.adjusted !== null);
+
+const weekendTotal = pf(WEEKEND_STAFFING_FIELDS.totalWeekend);
+const weekendRn = pf(WEEKEND_STAFFING_FIELDS.rnWeekend);
+const weekendAdjusted = pf(WEEKEND_STAFFING_FIELDS.adjustedTotal);
+
+const turnoverTotal = pf(TURNOVER_FIELDS.totalNursing);
+const turnoverRn = pf(TURNOVER_FIELDS.rn);
+const adminDepartures = pf(TURNOVER_FIELDS.admin);
+const turnoverTotalFootnote = ps('Total nursing staff turnover footnote');
+const turnoverRnFootnote = ps('Registered Nurse turnover footnote');
+const adminFootnote = ps('Administrator turnover footnote');
+
+const caseMixIndex = pf(CASE_MIX_FIELDS.index);
+const caseMixRatio = pf(CASE_MIX_FIELDS.ratio);
+
+// ── Inspection history ────────────────────────────────────────────
+
+const inspectionCycles = [
+  {
+    label: 'Cycle 1 (most recent)',
+    date: ps('Rating Cycle 1 Standard Survey Health Date'),
+    totalDef: pf('Rating Cycle 1 Total Number of Health Deficiencies'),
+    stdDef: pf('Rating Cycle 1 Number of Standard Health Deficiencies'),
+    complaintDef: pf('Rating Cycle 1 Number of Complaint Health Deficiencies'),
+    defScore: pf('Rating Cycle 1 Health Deficiency Score'),
+    revisits: pf('Rating Cycle 1 Number of Health Revisits'),
+    revisitScore: pf('Rating Cycle 1 Health Revisit Score'),
+    totalScore: pf('Rating Cycle 1 Total Health Score'),
+  },
+  {
+    label: 'Cycle 2/3 (prior)',
+    date: ps('Rating Cycle 2 Standard Health Survey Date'),
+    totalDef: pf('Rating Cycle 2/3 Total Number of Health Deficiencies'),
+    stdDef: pf('Rating Cycle 2 Number of Standard Health Deficiencies'),
+    complaintDef: pf('Rating Cycle 2/3 Number of Complaint Health Deficiencies'),
+    defScore: pf('Rating Cycle 2/3 Health Deficiency Score'),
+    revisits: pf('Rating Cycle 2/3 Number of Health Revisits'),
+    revisitScore: pf('Rating Cycle 2/3 Health Revisit Score'),
+    totalScore: pf('Rating Cycle 2/3 Total Health Score'),
+  },
+].filter(c => c.date || c.totalDef !== null || c.defScore !== null);
+
+const totalWeightedScore = pf('Total Weighted Health Survey Score');
+const icfCitations = pf('Number of Citations from Infection Control Inspections');
+
+// ── Deficiencies ──────────────────────────────────────────────────
+
+const deficiencies = (manifest.data?.deficiencies || []) as Array<any>;
+const deficiencyByBand = new Map<string, number>();
+for (const d of deficiencies) {
+  const b = severityBand(d.scope_severity);
+  if (!b) continue;
+  deficiencyByBand.set(b.label, (deficiencyByBand.get(b.label) ?? 0) + 1);
+}
+
+const sortedDeficiencies = [...deficiencies].sort((a, b) => {
+  const da = (a.survey_date || '');
+  const db = (b.survey_date || '');
+  return db.localeCompare(da);
+});
+
+// ── Penalties ─────────────────────────────────────────────────────
+
+const penalties = (manifest.data?.penalties || []) as Array<any>;
+const fineCount = penalties.filter(p => String(p.penalty_type || '').toLowerCase().includes('fine')).length;
+const denialCount = penalties.filter(p => String(p.penalty_type || '').toLowerCase().includes('denial')).length;
+const totalFineDollars = penalties.reduce((acc, p) => acc + (p.fine_amount ?? 0), 0);
+
+// ── Ownership ─────────────────────────────────────────────────────
+
+const ownership = (manifest.data?.ownership || []) as Array<any>;
+const ownerOrgs = ownership.filter(o => o.owner_type === 'Organization');
+const ownerIndividuals = ownership.filter(o => o.owner_type !== 'Organization');
+const hasOwnershipPct = ownership.some(o => o.ownership_percentage !== null && o.ownership_percentage !== undefined);
+
+// ── Chain info ────────────────────────────────────────────────────
+
+const chainName = ps('Chain Name');
+const chainId = ps('Chain ID');
+const chainSize = pf('Number of Facilities in Chain');
+const chainAvgOverall = pf('Chain Average Overall 5-star Rating');
+const chainAvgHealth = pf('Chain Average Health Inspection Rating');
+const chainAvgStaffing = pf('Chain Average Staffing Rating');
+const chainAvgQm = pf('Chain Average QM Rating');
+const hasChain = !!chainName && chainName !== '';
+const legalBusiness = ps('Legal Business Name');
+
+// ── Cost report ───────────────────────────────────────────────────
+
 const costReport = manifest.data?.cost_report || null;
+const costMetrics: Record<string, number | null> = {};
+if (costReport?.metrics) {
+  for (const [k, v] of Object.entries(costReport.metrics)) {
+    const metric = v as any;
+    costMetrics[k] = (metric && typeof metric.value === 'number') ? metric.value : null;
+  }
+}
+const medicarePct = costMetrics['medicare_day_share'] ?? null;
+const medicaidPct = costMetrics['medicaid_day_share'] ?? null;
+const otherPct = (medicarePct !== null && medicaidPct !== null)
+  ? Math.max(0, 100 - medicarePct - medicaidPct)
+  : null;
 
-// ── Build "All Data" rows (drives the All Data section + CSV) ──────
+// ── Related + provenance ──────────────────────────────────────────
 
-const SNF_GROUP_LABELS: Record<string, string> = {
-  provider_info: 'Provider Information',
-  penalties: 'Penalties',
-  deficiencies: 'Deficiencies',
-  ownership: 'Ownership',
-  cost_report: 'Cost Report',
-};
+const related = manifest.related || [];
+const provenance = manifest.provenance || [];
+
+// ── Section nav ───────────────────────────────────────────────────
+
+const sections: Array<{ id: string; label: string }> = [
+  { id: 'overview', label: 'Overview' },
+  { id: 'ratings', label: 'Ratings' },
+];
+if (hasStaffingData) sections.push({ id: 'staffing', label: 'Staffing' });
+if (inspectionCycles.length > 0) sections.push({ id: 'inspections', label: 'Inspections' });
+if (deficiencies.length > 0) sections.push({ id: 'deficiencies', label: 'Deficiencies' });
+if (penalties.length > 0) sections.push({ id: 'penalties', label: 'Penalties' });
+if (costReport) sections.push({ id: 'financial', label: 'Financial' });
+if (hasChain || ownership.length > 0) sections.push({ id: 'ownership', label: 'Ownership & Chain' });
+sections.push({ id: 'facility-features', label: 'Facility Features' });
+if (related.length > 0) sections.push({ id: 'related', label: 'Related' });
+sections.push({ id: 'all-data', label: 'All Data' });
+
+// ── All Data rows (unchanged behaviour) ───────────────────────────
 
 const allDataRows: AllDataRow[] = [];
 
-// Provider info — CMS ships these with human-readable CSV headers already.
 for (const [k, v] of Object.entries(providerInfo)) {
   if (v === null || v === undefined) continue;
   const s = String(v).trim();
@@ -82,39 +256,11 @@ for (const [k, v] of Object.entries(providerInfo)) {
   });
 }
 
-// Any other data.* subkey — flatten generically.
 const handledSnfKeys = new Set(['provider_info']);
 for (const [dsKey, ds] of Object.entries(manifest.data || {})) {
   if (handledSnfKeys.has(dsKey)) continue;
   const groupLabel = SNF_GROUP_LABELS[dsKey] || dsKey.replace(/_/g, ' ');
-  if (Array.isArray(ds)) {
-    for (const row of ds) {
-      if (!row || typeof row !== 'object') continue;
-      for (const [k, v] of Object.entries(row as Record<string, any>)) {
-        if (v === null || v === undefined || v === '') continue;
-        allDataRows.push({
-          group: groupLabel,
-          rawKey: k,
-          label: k,
-          value: heuristicFormat(v, k),
-          bmMedian: '\u2014',
-          percentile: undefined,
-        });
-      }
-    }
-  } else if (ds && typeof ds === 'object') {
-    for (const [k, v] of Object.entries(ds as Record<string, any>)) {
-      if (v === null || v === undefined || v === '') continue;
-      allDataRows.push({
-        group: groupLabel,
-        rawKey: k,
-        label: k,
-        value: heuristicFormat(v, k),
-        bmMedian: '\u2014',
-        percentile: undefined,
-      });
-    }
-  }
+  flattenDataset(groupLabel, ds, allDataRows);
 }
 
 allDataRows.sort((a, b) => {
@@ -124,29 +270,19 @@ allDataRows.sort((a, b) => {
 
 const allDataCsvUri = buildAllDataCsv(allDataRows);
 
-// Payer mix percentages
-const medicarePct = costReport?.medicare_pct ?? null;
-const medicaidPct = costReport?.medicaid_pct ?? null;
-const otherPct = (medicarePct != null && medicaidPct != null) ? Math.max(0, 100 - medicarePct - medicaidPct) : null;
+// ── Related entity URL helpers ────────────────────────────────────
 
-// Related entities
-const related = manifest.related || [];
-
-// Entity URL helpers
 function entityUrl(rel: { type: string; id: string }): string {
-  if (rel.type === 'county') return `/county/${rel.id}/`;
-  if (rel.type === 'hospital') return `/hospital/${rel.id}/`;
-  if (rel.type === 'snf') return `/snf/${rel.id}/`;
-  if (rel.type === 'aco') return `/aco/${rel.id}/`;
-  if (rel.type === 'drug') return `/drug/${rel.id}/`;
-  if (rel.type === 'condition') return `/condition/${rel.id}/`;
-  if (rel.type === 'drg') return `/drg/${rel.id}/`;
-  return '#';
+  return `/${rel.type}/${rel.id}/`;
 }
 
 function badgeClass(type: string): string {
   return `badge badge-${type}`;
 }
+
+const ownershipLabel = OWNERSHIP_TYPE_COPY[manifest.ownership_type] || manifest.ownership_type || '';
+
+const OWNER_DISPLAY_CAP = 25;
 ---
 
 <BaseLayout title={name} description={`${name} (CCN: ${ccn}) — SNF profile on CareGraph`}>
@@ -167,241 +303,778 @@ function badgeClass(type: string): string {
     </button>
   </div>
 
-  <div id="explore-view">
-    <div class="card">
-      <h2>Overview</h2>
-      <dl class="kv-grid">
-        <dt>Address</dt>
-        <dd>{manifest.address}, {manifest.city}, {manifest.state} {manifest.zip_code}</dd>
-        <dt>Beds</dt>
-        <dd>{manifest.beds}</dd>
-        <dt>Average residents/day</dt>
-        <dd>{manifest.average_residents_per_day}</dd>
-        <dt>Ownership</dt>
-        <dd>{manifest.ownership_type}</dd>
-        <dt>Provider resides in hospital</dt>
-        <dd>{manifest.provider_resides_in_hospital === 'Y' ? 'Yes' : 'No'}</dd>
-      </dl>
-    </div>
+  <nav class="section-nav" aria-label="Data sections">
+    {sections.map(s => (
+      <a href={`#${s.id}`}>{s.label}</a>
+    ))}
+  </nav>
 
-    <div class="card">
-      <h2>Ratings</h2>
-      <dl class="kv-grid">
-        {ratings.map(r => (
+  {activeFlags.length > 0 && (
+    <div class="snf-flag-row">
+      {activeFlags.map(f => (
+        <span class={`snf-flag snf-flag-${f.tone}`} title={f.tooltip}>
+          <span class="snf-flag-icon">{f.tone === 'info' ? 'ℹ' : '⚠'}</span>
+          {f.label}
+        </span>
+      ))}
+    </div>
+  )}
+
+  <!-- 1. OVERVIEW -->
+  <div class="card" id="overview">
+    <h2>Overview</h2>
+    <div class="snf-overview-grid">
+      <div>
+        <dl class="kv-grid">
+          <dt>Address</dt>
+          <dd>{manifest.address}, {manifest.city}, {manifest.state} {manifest.zip_code}</dd>
+          {ps('Telephone Number') && (
+            <>
+              <dt>Phone</dt>
+              <dd>{ps('Telephone Number')}</dd>
+            </>
+          )}
+          <dt>Certified beds</dt>
+          <dd>{fmtInt(beds)}</dd>
+          <dt>Avg daily residents</dt>
+          <dd>
+            {fmtInt(avgResidents)}
+            {occupancyDerived !== null && (
+              <span style="color: var(--color-text-muted);"> ({occupancyDerived.toFixed(0)}% of beds filled)</span>
+            )}
+          </dd>
+          <dt>Ownership</dt>
+          <dd>{ownershipLabel}</dd>
+          {ps('Provider Type') && (
+            <>
+              <dt>Provider type</dt>
+              <dd>{ps('Provider Type')}</dd>
+            </>
+          )}
+          {firstApproval && (
+            <>
+              <dt>Medicare/Medicaid since</dt>
+              <dd>{firstApproval}</dd>
+            </>
+          )}
+          {ps('Urban') && (
+            <>
+              <dt>Setting</dt>
+              <dd>{ps('Urban') === 'Y' ? 'Urban' : 'Rural'}</dd>
+            </>
+          )}
+        </dl>
+      </div>
+
+      <div class="snf-star-card">
+        {ratings[0].value !== null ? (
           <>
-            <dt>{r.label}</dt>
-            <dd>
-              {r.value !== null ? (
-                <>
-                  <span class="star-rating">
-                    {[1,2,3,4,5].map(i => (
-                      <span class={i <= r.value! ? 'star-filled' : 'star-empty'}>&#9733;</span>
-                    ))}
-                  </span>
-                  ({r.value}/5)
-                </>
-              ) : (
-                <span style="color: var(--color-text-muted);">&mdash; Not Available</span>
-              )}
-            </dd>
+            <div class="snf-star-display">
+              <span class="snf-star-number">{ratings[0].value}</span>
+              <span class="snf-star-of">/5</span>
+            </div>
+            <div class="snf-star-stars">
+              {[1,2,3,4,5].map(i => (
+                <span class={i <= ratings[0].value! ? 'star-filled' : 'star-empty'}>&#9733;</span>
+              ))}
+            </div>
+            <div class="snf-star-label">CMS Overall Rating</div>
           </>
-        ))}
-      </dl>
+        ) : (
+          <>
+            <div class="snf-star-display" style="opacity: 0.4;">
+              <span class="snf-star-number">&mdash;</span>
+            </div>
+            <div class="snf-star-label">Rating not available</div>
+          </>
+        )}
+      </div>
     </div>
+  </div>
 
-    {penalties && penalties.length > 0 && (
-      <div class="card">
-        <h2>Penalties ({penalties.length})</h2>
-        <div style="overflow-x: auto;">
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th>Date</th>
-                <th>Type</th>
-                <th>Fine Amount</th>
-              </tr>
-            </thead>
-            <tbody>
-              {penalties.map((p: any) => (
+  <!-- 2. RATINGS -->
+  <div class="card" id="ratings">
+    <h2>CMS 5-Star Ratings</h2>
+    <p class="section-help">
+      CMS rates every Medicare/Medicaid-certified nursing home on four domains. The Overall rating
+      is driven primarily by Health Inspection results, then adjusted up or down by Staffing and
+      Quality Measures.
+    </p>
+    <div class="snf-rating-list">
+      {ratings.map(r => (
+        <div class="snf-rating-row">
+          <div class="snf-rating-label">
+            <strong>{r.label}</strong>
+            <div class="snf-rating-help">{r.help}</div>
+            {decodeFootnote(ps(r.footnoteKey)) && (
+              <div class="snf-rating-footnote">{decodeFootnote(ps(r.footnoteKey))}</div>
+            )}
+          </div>
+          <div class="snf-rating-stars">
+            {r.value !== null ? (
+              <>
+                <span class="star-rating">
+                  {[1,2,3,4,5].map(i => (
+                    <span class={i <= r.value! ? 'star-filled' : 'star-empty'}>&#9733;</span>
+                  ))}
+                </span>
+                <span class="snf-rating-value">{r.value}/5</span>
+              </>
+            ) : (
+              <span style="color: var(--color-text-muted);">&mdash; Not Available</span>
+            )}
+          </div>
+        </div>
+      ))}
+
+      {/* QM sub-breakdown */}
+      {(qmSub[0].value !== null || qmSub[1].value !== null) && (
+        <div class="snf-rating-sub">
+          <div class="snf-rating-sub-label">Quality Measures breakdown</div>
+          {qmSub.map(s => (
+            <div class="snf-rating-sub-row">
+              <span>{s.label}</span>
+              <span class="snf-rating-stars">
+                {s.value !== null ? (
+                  <>
+                    <span class="star-rating">
+                      {[1,2,3,4,5].map(i => (
+                        <span class={i <= s.value! ? 'star-filled' : 'star-empty'}>&#9733;</span>
+                      ))}
+                    </span>
+                    <span class="snf-rating-value">{s.value}/5</span>
+                  </>
+                ) : (
+                  <span style="color: var(--color-text-muted);">&mdash;</span>
+                )}
+                {decodeFootnote(ps(s.footnoteKey)) && (
+                  <span class="snf-rating-footnote"> {decodeFootnote(ps(s.footnoteKey))}</span>
+                )}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  </div>
+
+  {/* 3. STAFFING */}
+  {hasStaffingData && (
+    <div class="card" id="staffing">
+      <h2>Staffing &amp; Workforce</h2>
+      <p class="section-help">
+        Direct-care staffing is the strongest operational driver of quality in nursing homes.
+        Values are hours per resident per day, derived from payroll-based journal (PBJ) submissions.
+        "Case-mix" adjusts for resident acuity; "Adjusted" is the CMS rating-input value.
+      </p>
+
+      <div style="overflow-x: auto;">
+        <table class="data-table snf-staffing-table">
+          <thead>
+            <tr>
+              <th>Role</th>
+              <th style="text-align:right;">Reported</th>
+              <th style="text-align:right;">Case-mix expected</th>
+              <th style="text-align:right;">Adjusted</th>
+              <th style="text-align:right;">Federal floor</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {staffingRows.map(({ role, reported, caseMix, adjusted }) => {
+              const belowFloor = role.floor !== undefined && reported !== null && reported < role.floor;
+              return (
                 <tr>
-                  <td>{p.penalty_date || '\u2014'}</td>
-                  <td>{p.penalty_type || '\u2014'}</td>
-                  <td style={p.fine_amount ? 'color: var(--color-error);' : ''}>
-                    {p.fine_amount ? `$${p.fine_amount.toLocaleString()}` : '\u2014'}
+                  <td>
+                    <strong>{role.label}</strong>
+                    <div style="font-size: 0.75rem; color: var(--color-text-muted);">{role.detail}</div>
+                  </td>
+                  <td style="text-align:right; font-variant-numeric: tabular-nums;">{fmtHours(reported)}</td>
+                  <td style="text-align:right; font-variant-numeric: tabular-nums; color: var(--color-text-muted);">{fmtHours(caseMix)}</td>
+                  <td style="text-align:right; font-variant-numeric: tabular-nums;">{fmtHours(adjusted)}</td>
+                  <td style="text-align:right; font-variant-numeric: tabular-nums; color: var(--color-text-muted);">
+                    {role.floor !== undefined ? `≥ ${role.floor.toFixed(2)}` : '\u2014'}
+                  </td>
+                  <td>
+                    {belowFloor && (
+                      <span class="snf-flag snf-flag-warn" style="font-size: 0.7rem;" title={role.floorSource}>Below floor</span>
+                    )}
                   </td>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        <p style="font-size: 0.8rem; color: var(--color-text-muted); margin-top: 0.5rem;">
-          Fines and payment denials in the last 3 years. Source: CMS Nursing Home Penalties.
-        </p>
+              );
+            })}
+          </tbody>
+        </table>
       </div>
-    )}
 
-    {deficiencies && deficiencies.length > 0 && (
-      <div class="card">
-        <h2>Health Deficiencies ({deficiencies.length})</h2>
-        <div style="overflow-x: auto;">
-          <table class="data-table">
-            <thead>
+      <p style="font-size: 0.75rem; color: var(--color-text-muted); margin-top: 0.5rem;">
+        Federal minimums (phasing in under the CMS 2024 minimum staffing rule) shown for reference.
+        RN: 0.55 hrs/resident/day. Total nurse: 3.48 hrs/resident/day.
+      </p>
+
+      {/* Weekend staffing */}
+      {(weekendTotal !== null || weekendRn !== null) && (
+        <>
+          <h3 style="font-size: 1rem; margin-top: 1.5rem; margin-bottom: 0.5rem;">Weekend staffing</h3>
+          <div class="metric-grid">
+            {weekendTotal !== null && (
+              <div class="metric-card">
+                <div class="label">Total nurse (weekend)</div>
+                <div class="value">{weekendTotal.toFixed(2)}</div>
+                <div class="unit">hrs / resident / day</div>
+              </div>
+            )}
+            {weekendRn !== null && (
+              <div class="metric-card">
+                <div class="label">RN (weekend)</div>
+                <div class="value">{weekendRn.toFixed(2)}</div>
+                <div class="unit">hrs / resident / day</div>
+              </div>
+            )}
+            {weekendAdjusted !== null && (
+              <div class="metric-card">
+                <div class="label">Total nurse (adjusted, weekend)</div>
+                <div class="value">{weekendAdjusted.toFixed(2)}</div>
+                <div class="unit">hrs / resident / day</div>
+              </div>
+            )}
+          </div>
+          <p style="font-size: 0.75rem; color: var(--color-text-muted); margin-top: 0.5rem;">
+            Weekend under-staffing is a common quality-of-care concern — adverse events are more frequent when licensed coverage drops.
+          </p>
+        </>
+      )}
+
+      {/* Turnover */}
+      {(turnoverTotal !== null || turnoverRn !== null || adminDepartures !== null) && (
+        <>
+          <h3 style="font-size: 1rem; margin-top: 1.5rem; margin-bottom: 0.5rem;">Staff turnover</h3>
+          <div class="metric-grid">
+            {turnoverTotal !== null ? (
+              <div class="metric-card">
+                <div class="label">Total nursing staff turnover</div>
+                <div class="value" style={`color: ${turnoverTotal > 50 ? '#dc2626' : turnoverTotal > 35 ? '#d97706' : '#059669'}`}>
+                  {turnoverTotal.toFixed(1)}%
+                </div>
+                <div class="unit">annual</div>
+              </div>
+            ) : turnoverTotalFootnote && (
+              <div class="metric-card">
+                <div class="label">Total nursing staff turnover</div>
+                <div class="value" style="font-size: 0.9rem; color: var(--color-text-muted);">{decodeFootnote(turnoverTotalFootnote) ?? 'Not reported'}</div>
+              </div>
+            )}
+            {turnoverRn !== null ? (
+              <div class="metric-card">
+                <div class="label">RN turnover</div>
+                <div class="value" style={`color: ${turnoverRn > 50 ? '#dc2626' : turnoverRn > 35 ? '#d97706' : '#059669'}`}>
+                  {turnoverRn.toFixed(1)}%
+                </div>
+                <div class="unit">annual</div>
+              </div>
+            ) : turnoverRnFootnote && (
+              <div class="metric-card">
+                <div class="label">RN turnover</div>
+                <div class="value" style="font-size: 0.9rem; color: var(--color-text-muted);">{decodeFootnote(turnoverRnFootnote) ?? 'Not reported'}</div>
+              </div>
+            )}
+            {adminDepartures !== null ? (
+              <div class="metric-card">
+                <div class="label">Administrators departed</div>
+                <div class="value" style={`color: ${adminDepartures >= 2 ? '#dc2626' : adminDepartures >= 1 ? '#d97706' : '#059669'}`}>
+                  {Math.round(adminDepartures)}
+                </div>
+                <div class="unit">last 12 months</div>
+              </div>
+            ) : adminFootnote && (
+              <div class="metric-card">
+                <div class="label">Administrators departed</div>
+                <div class="value" style="font-size: 0.9rem; color: var(--color-text-muted);">{decodeFootnote(adminFootnote) ?? 'Not reported'}</div>
+              </div>
+            )}
+          </div>
+        </>
+      )}
+
+      {/* Case mix index */}
+      {(caseMixIndex !== null || caseMixRatio !== null) && (
+        <>
+          <h3 style="font-size: 1rem; margin-top: 1.5rem; margin-bottom: 0.5rem;">Resident acuity</h3>
+          <div class="metric-grid">
+            {caseMixIndex !== null && (
+              <div class="metric-card">
+                <div class="label">Nursing Case-Mix Index</div>
+                <div class="value">{caseMixIndex.toFixed(2)}</div>
+                <div class="unit">{caseMixIndex > 1.15 ? 'higher acuity than avg' : caseMixIndex < 0.9 ? 'lower acuity than avg' : 'near national average'}</div>
+              </div>
+            )}
+            {caseMixRatio !== null && (
+              <div class="metric-card">
+                <div class="label">Case-Mix Index Ratio</div>
+                <div class="value">{caseMixRatio.toFixed(2)}</div>
+                <div class="unit">facility / state ratio</div>
+              </div>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  )}
+
+  {/* 4. INSPECTIONS */}
+  {inspectionCycles.length > 0 && (
+    <div class="card" id="inspections">
+      <h2>Health Inspections</h2>
+      <p class="section-help">
+        CMS weights three inspection cycles to compute the Health Inspection rating: the most recent
+        (50%), the second most recent (33%), and the oldest (17%). Each standard-survey deficiency
+        is assigned a score based on scope and severity; complaint-survey findings and revisit scores
+        are added to produce the cycle total.
+      </p>
+
+      <div style="overflow-x: auto;">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Cycle</th>
+              <th>Date</th>
+              <th style="text-align:right;">Total defs.</th>
+              <th style="text-align:right;">Standard</th>
+              <th style="text-align:right;">Complaint</th>
+              <th style="text-align:right;">Deficiency score</th>
+              <th style="text-align:right;">Revisits</th>
+              <th style="text-align:right;">Total score</th>
+            </tr>
+          </thead>
+          <tbody>
+            {inspectionCycles.map(c => (
               <tr>
-                <th>Tag</th>
-                <th>Severity</th>
-                <th>Survey Date</th>
-                <th>Correction Date</th>
+                <td><strong>{c.label}</strong></td>
+                <td>{c.date || '\u2014'}</td>
+                <td style="text-align:right;">{fmtInt(c.totalDef)}</td>
+                <td style="text-align:right;">{fmtInt(c.stdDef)}</td>
+                <td style="text-align:right;">{fmtInt(c.complaintDef)}</td>
+                <td style="text-align:right;">{fmtInt(c.defScore)}</td>
+                <td style="text-align:right;">{fmtInt(c.revisits)}</td>
+                <td style="text-align:right;"><strong>{fmtInt(c.totalScore)}</strong></td>
               </tr>
-            </thead>
-            <tbody>
-              {deficiencies.slice(0, 50).map((d: any) => (
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div class="metric-grid" style="margin-top: 1rem;">
+        {totalWeightedScore !== null && (
+          <div class="metric-card">
+            <div class="label">Total weighted health score</div>
+            <div class="value">{totalWeightedScore.toFixed(1)}</div>
+            <div class="unit">lower is better</div>
+          </div>
+        )}
+        {icfCitations !== null && (
+          <div class="metric-card">
+            <div class="label">Infection-control citations</div>
+            <div class="value">{Math.round(icfCitations)}</div>
+            <div class="unit">last cycle</div>
+          </div>
+        )}
+      </div>
+    </div>
+  )}
+
+  {/* 5. DEFICIENCIES */}
+  {deficiencies.length > 0 && (
+    <div class="card" id="deficiencies">
+      <h2>Deficiencies ({deficiencies.length})</h2>
+      <p class="section-help">
+        Individual survey findings. Scope/severity uses the CMS A–L matrix: letters further down
+        the alphabet indicate greater harm and wider scope, up through J–L (immediate jeopardy).
+      </p>
+
+      {/* Severity summary */}
+      <div class="snf-severity-summary">
+        {SEVERITY_BANDS.map(band => {
+          const count = deficiencyByBand.get(band.label) ?? 0;
+          if (count === 0) return null;
+          return (
+            <div class="snf-severity-pill" style={`background: ${band.bg}; color: ${band.color};`}>
+              <strong>{count}</strong>
+              <span>{band.codes.join('/')}</span>
+              <span style="opacity: 0.7;">{band.label}</span>
+            </div>
+          );
+        })}
+      </div>
+
+      <div style="overflow-x: auto;">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Tag</th>
+              <th>Description</th>
+              <th>Scope/Severity</th>
+              <th>Survey date</th>
+              <th>Corrected</th>
+            </tr>
+          </thead>
+          <tbody>
+            {sortedDeficiencies.slice(0, 50).map((d: any) => {
+              const b = severityBand(d.scope_severity);
+              return (
                 <tr>
-                  <td style="font-weight: 500;">{d.tag || '\u2014'}</td>
-                  <td>{d.scope_severity || '\u2014'}</td>
+                  <td style="font-weight: 500; font-family: var(--font-mono); font-size: 0.85rem;">{d.tag || '\u2014'}</td>
+                  <td style="font-size: 0.85rem; max-width: 520px;">{d.description || '\u2014'}</td>
+                  <td>
+                    {d.scope_severity ? (
+                      <span class="snf-severity-pill snf-severity-pill-inline" style={b ? `background: ${b.bg}; color: ${b.color};` : ''}>
+                        {d.scope_severity}
+                      </span>
+                    ) : '\u2014'}
+                  </td>
                   <td>{d.survey_date || '\u2014'}</td>
                   <td>{d.correction_date || '\u2014'}</td>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        {deficiencies.length > 50 && (
-          <p style="font-size: 0.8rem; color: var(--color-text-muted); margin-top: 0.5rem;">
-            Showing 50 of {deficiencies.length} citations. Use Table view for full data.
-          </p>
-        )}
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      {deficiencies.length > 50 && (
         <p style="font-size: 0.8rem; color: var(--color-text-muted); margin-top: 0.5rem;">
-          Health inspection citations from the last 3 years. Severity A-L (L = most severe). Source: CMS Health Deficiencies.
-        </p>
-      </div>
-    )}
-
-    {ownership && ownership.length > 0 && (
-      <div class="card">
-        <h2>Ownership</h2>
-        <div style="overflow-x: auto;">
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th>Owner Name</th>
-                <th>Type</th>
-                <th>Ownership %</th>
-              </tr>
-            </thead>
-            <tbody>
-              {ownership.map((o: any) => (
-                <tr>
-                  <td style="font-weight: 500;">{o.owner_name || '\u2014'}</td>
-                  <td>{o.owner_type || '\u2014'}</td>
-                  <td>{o.ownership_percentage != null ? `${o.ownership_percentage}%` : '\u2014'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        <p style="font-size: 0.8rem; color: var(--color-text-muted); margin-top: 0.5rem;">
-          Corporate ownership chain. Source: CMS Nursing Home Ownership.
-        </p>
-      </div>
-    )}
-
-    {costReport && (
-      <div class="card" id="financial-health">
-        <h2>Financial Health <span style="font-size: 0.85rem; color: var(--color-text-muted); font-weight: 400;">(FY {costReport.fiscal_year} Cost Report)</span></h2>
-
-        {medicarePct != null && medicaidPct != null && (
-          <div style="margin-bottom: 1rem;">
-            <h3 style="font-size: 1rem; margin-bottom: 0.5rem;">Payer Mix</h3>
-            <div class="demo-bar-track" style="height: 1.5rem; display: flex; border-radius: 6px; overflow: hidden;">
-              <div class="demo-bar-fill" style={`width: ${medicarePct}%; background: #2563eb;`} title={`Medicare: ${medicarePct.toFixed(1)}%`}></div>
-              <div class="demo-bar-fill" style={`width: ${medicaidPct}%; background: #7c3aed;`} title={`Medicaid: ${medicaidPct.toFixed(1)}%`}></div>
-              {otherPct != null && otherPct > 0 && (
-                <div class="demo-bar-fill" style={`width: ${otherPct.toFixed(1)}%; background: #9ca3af;`} title={`Other: ${otherPct.toFixed(1)}%`}></div>
-              )}
-            </div>
-            <div style="display: flex; gap: 1rem; margin-top: 0.4rem; font-size: 0.8rem;">
-              <span><span style="display:inline-block;width:10px;height:10px;background:#2563eb;border-radius:2px;margin-right:4px;"></span>Medicare {medicarePct.toFixed(1)}%</span>
-              <span><span style="display:inline-block;width:10px;height:10px;background:#7c3aed;border-radius:2px;margin-right:4px;"></span>Medicaid {medicaidPct.toFixed(1)}%</span>
-              {otherPct != null && otherPct > 0 && (
-                <span><span style="display:inline-block;width:10px;height:10px;background:#9ca3af;border-radius:2px;margin-right:4px;"></span>Other {otherPct.toFixed(1)}%</span>
-              )}
-            </div>
-          </div>
-        )}
-
-        <div class="metric-grid">
-          {costReport.operating_margin != null && (
-            <div class="metric-card">
-              <div class="label">Operating Margin</div>
-              <div class="value" style={`color: ${costReport.operating_margin >= 0 ? '#059669' : '#dc2626'}`}>
-                {costReport.operating_margin.toFixed(1) + '%'}
-              </div>
-            </div>
-          )}
-          {costReport.cost_per_resident_day != null && (
-            <div class="metric-card">
-              <div class="label">Cost per Resident Day</div>
-              <div class="value">{'$' + Math.round(costReport.cost_per_resident_day).toLocaleString()}</div>
-            </div>
-          )}
-          {costReport.occupancy_rate != null && (
-            <div class="metric-card">
-              <div class="label">Occupancy Rate</div>
-              <div class="value">{costReport.occupancy_rate.toFixed(1) + '%'}</div>
-            </div>
-          )}
-        </div>
-
-        <p style="font-size: 0.75rem; color: var(--color-text-muted); margin-top: 0.5rem;">
-          Source: CMS SNF Cost Report (FY {costReport.fiscal_year}).
-        </p>
-      </div>
-    )}
-
-    {related.length > 0 && (
-      <div class="card">
-        <h2>Related Entities</h2>
-        <ul class="related-list">
-          {related.map((rel: any) => (
-            <li>
-              <span class={badgeClass(rel.type)}>{rel.type}</span>
-              <a href={entityUrl(rel)}>{rel.name}</a>
-              {rel.context && <span class="related-context">{rel.context}</span>}
-            </li>
-          ))}
-        </ul>
-      </div>
-    )}
-
-    <div class="methodology-stub">
-      <strong>Methodology</strong>
-      <p>
-        Data source: <strong>{provenance?.dataset_name}</strong>
-        (dataset ID: <code>{provenance?.dataset_id}</code>).
-        Vintage: {provenance?.vintage}.
-        Downloaded: {provenance?.download_date}.
-        Rows in source: {provenance?.row_count?.toLocaleString()}.
-      </p>
-      {manifest.provenance?.length > 1 && (
-        <p>
-          Additional data sources:
-          {manifest.provenance.slice(1).map((p: any) => (
-            <span> <strong>{p.dataset_name}</strong> ({p.vintage})</span>
-          ))}
+          Showing 50 most recent of {deficiencies.length}. See the All Data CSV for the full list.
         </p>
       )}
-      <p>
-        <a href="/methodology/">Full methodology &rarr;</a>
+    </div>
+  )}
+
+  {/* 6. PENALTIES */}
+  {penalties.length > 0 && (
+    <div class="card" id="penalties">
+      <h2>Penalties ({penalties.length})</h2>
+      <div class="metric-grid" style="margin-bottom: 1rem;">
+        <div class="metric-card">
+          <div class="label">Fines issued</div>
+          <div class="value">{fineCount}</div>
+          <div class="unit">last 3 years</div>
+        </div>
+        {totalFineDollars > 0 && (
+          <div class="metric-card">
+            <div class="label">Total fines</div>
+            <div class="value" style="color: var(--color-error);">${Math.round(totalFineDollars).toLocaleString()}</div>
+          </div>
+        )}
+        {denialCount > 0 && (
+          <div class="metric-card">
+            <div class="label">Payment denials</div>
+            <div class="value" style="color: var(--color-error);">{denialCount}</div>
+          </div>
+        )}
+      </div>
+      <div style="overflow-x: auto;">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Type</th>
+              <th style="text-align:right;">Fine amount</th>
+            </tr>
+          </thead>
+          <tbody>
+            {penalties.map((p: any) => (
+              <tr>
+                <td>{p.penalty_date || '\u2014'}</td>
+                <td>{p.penalty_type || '\u2014'}</td>
+                <td style="text-align:right;">
+                  {p.fine_amount ? `$${Math.round(p.fine_amount).toLocaleString()}` : '\u2014'}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p style="font-size: 0.8rem; color: var(--color-text-muted); margin-top: 0.5rem;">
+        Source: CMS Nursing Home Penalties.
       </p>
     </div>
+  )}
+
+  {/* 7. FINANCIAL */}
+  {costReport && (
+    <div class="card" id="financial">
+      <h2>Financial Health
+        <span style="font-size: 0.85rem; color: var(--color-text-muted); font-weight: 400;"> (FY {costReport.fiscal_year})</span>
+      </h2>
+
+      {/* Payer mix */}
+      {medicarePct !== null && medicaidPct !== null && (
+        <div style="margin-bottom: 1.25rem;">
+          <h3 style="font-size: 1rem; margin-bottom: 0.5rem;">Payer mix (share of resident days)</h3>
+          <div class="demo-bar-track" style="height: 1.5rem; display: flex; border-radius: 6px; overflow: hidden;">
+            <div class="demo-bar-fill" style={`width: ${medicarePct}%; background: #2563eb;`} title={`Medicare: ${medicarePct.toFixed(1)}%`}></div>
+            <div class="demo-bar-fill" style={`width: ${medicaidPct}%; background: #7c3aed;`} title={`Medicaid: ${medicaidPct.toFixed(1)}%`}></div>
+            {otherPct !== null && otherPct > 0 && (
+              <div class="demo-bar-fill" style={`width: ${otherPct.toFixed(1)}%; background: #9ca3af;`} title={`Other: ${otherPct.toFixed(1)}%`}></div>
+            )}
+          </div>
+          <div style="display: flex; flex-wrap: wrap; gap: 1rem; margin-top: 0.4rem; font-size: 0.8rem;">
+            <span><span style="display:inline-block;width:10px;height:10px;background:#2563eb;border-radius:2px;margin-right:4px;"></span>Medicare {medicarePct.toFixed(1)}%</span>
+            <span><span style="display:inline-block;width:10px;height:10px;background:#7c3aed;border-radius:2px;margin-right:4px;"></span>Medicaid {medicaidPct.toFixed(1)}%</span>
+            {otherPct !== null && otherPct > 0 && (
+              <span><span style="display:inline-block;width:10px;height:10px;background:#9ca3af;border-radius:2px;margin-right:4px;"></span>Other {otherPct.toFixed(1)}%</span>
+            )}
+          </div>
+        </div>
+      )}
+
+      <h3 style="font-size: 1rem; margin-bottom: 0.5rem;">Operating performance</h3>
+      <div class="metric-grid" style="margin-bottom: 1.25rem;">
+        {COST_METRICS_OPERATING.map(m => {
+          const v = costMetrics[m.key];
+          if (v === null || v === undefined) return null;
+          const color = m.higherIsBetter ? (v >= 0 ? '#059669' : '#dc2626') : undefined;
+          return (
+            <div class="metric-card">
+              <div class="label">{m.label}</div>
+              <div class="value" style={color ? `color: ${color}` : ''}>{formatCostValue(v, m.format)}</div>
+            </div>
+          );
+        })}
+      </div>
+
+      <h3 style="font-size: 1rem; margin-bottom: 0.5rem;">Revenue &amp; costs</h3>
+      <div class="metric-grid" style="margin-bottom: 1.25rem;">
+        {COST_METRICS_INCOME.map(m => {
+          const v = costMetrics[m.key];
+          if (v === null || v === undefined) return null;
+          const color = m.higherIsBetter ? (v >= 0 ? '#059669' : '#dc2626') : undefined;
+          return (
+            <div class="metric-card">
+              <div class="label">{m.label}</div>
+              <div class="value" style={color ? `color: ${color}` : ''}>{formatCostValue(v, m.format)}</div>
+            </div>
+          );
+        })}
+      </div>
+
+      <h3 style="font-size: 1rem; margin-bottom: 0.5rem;">Balance sheet</h3>
+      <div class="metric-grid">
+        {COST_METRICS_BALANCE.map(m => {
+          const v = costMetrics[m.key];
+          if (v === null || v === undefined) return null;
+          const color = m.higherIsBetter ? (v >= 0 ? '#059669' : '#dc2626') : undefined;
+          return (
+            <div class="metric-card">
+              <div class="label">{m.label}</div>
+              <div class="value" style={color ? `color: ${color}` : ''}>{formatCostValue(v, m.format)}</div>
+            </div>
+          );
+        })}
+      </div>
+
+      <p style="font-size: 0.75rem; color: var(--color-text-muted); margin-top: 1rem;">
+        Source: CMS SNF Cost Report (FY {costReport.fiscal_year}). Cost report data lags by ~2 years.
+      </p>
+    </div>
+  )}
+
+  {/* 8. OWNERSHIP & CHAIN */}
+  {(hasChain || ownership.length > 0) && (
+    <div class="card" id="ownership">
+      <h2>Ownership &amp; Corporate Structure</h2>
+
+      {hasChain && (
+        <>
+          <h3 style="font-size: 1rem; margin-bottom: 0.5rem;">Chain: {chainName}</h3>
+          <dl class="kv-grid" style="margin-bottom: 1rem;">
+            <dt>Chain ID</dt>
+            <dd><code>{chainId}</code></dd>
+            <dt>Facilities in chain</dt>
+            <dd>{fmtInt(chainSize)}</dd>
+            {legalBusiness && (
+              <>
+                <dt>Legal business name</dt>
+                <dd>{legalBusiness}</dd>
+              </>
+            )}
+          </dl>
+
+          <div class="snf-chain-compare">
+            <div class="snf-chain-compare-title">Chain-average star ratings (for peer context)</div>
+            <div class="snf-chain-compare-grid">
+              <div>
+                <div class="snf-chain-compare-label">Overall</div>
+                <div class="snf-chain-compare-value">{chainAvgOverall !== null ? chainAvgOverall.toFixed(1) : '\u2014'}</div>
+              </div>
+              <div>
+                <div class="snf-chain-compare-label">Health</div>
+                <div class="snf-chain-compare-value">{chainAvgHealth !== null ? chainAvgHealth.toFixed(1) : '\u2014'}</div>
+              </div>
+              <div>
+                <div class="snf-chain-compare-label">Staffing</div>
+                <div class="snf-chain-compare-value">{chainAvgStaffing !== null ? chainAvgStaffing.toFixed(1) : '\u2014'}</div>
+              </div>
+              <div>
+                <div class="snf-chain-compare-label">QM</div>
+                <div class="snf-chain-compare-value">{chainAvgQm !== null ? chainAvgQm.toFixed(1) : '\u2014'}</div>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {ownerOrgs.length > 0 && (
+        <>
+          <h3 style="font-size: 1rem; margin: 1.25rem 0 0.5rem;">Owner / manager organizations ({ownerOrgs.length})</h3>
+          <div style="overflow-x: auto;">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Organization</th>
+                  <th>Role</th>
+                  {hasOwnershipPct && <th style="text-align:right;">%</th>}
+                  <th>Association</th>
+                </tr>
+              </thead>
+              <tbody>
+                {ownerOrgs.slice(0, OWNER_DISPLAY_CAP).map((o: any) => (
+                  <tr>
+                    <td style="font-weight: 500;">{o.owner_name || '\u2014'}</td>
+                    <td style="font-size: 0.85rem;">{o['Role played by Owner or Manager in Facility'] || '\u2014'}</td>
+                    {hasOwnershipPct && (
+                      <td style="text-align:right;">{o.ownership_percentage !== null && o.ownership_percentage !== undefined ? `${o.ownership_percentage}%` : '\u2014'}</td>
+                    )}
+                    <td style="font-size: 0.85rem;">{o['Association Date'] || '\u2014'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {ownerOrgs.length > OWNER_DISPLAY_CAP && (
+            <p style="font-size: 0.8rem; color: var(--color-text-muted);">
+              Showing {OWNER_DISPLAY_CAP} of {ownerOrgs.length} organizations. Full list in CSV.
+            </p>
+          )}
+        </>
+      )}
+
+      {ownerIndividuals.length > 0 && (
+        <>
+          <h3 style="font-size: 1rem; margin: 1.25rem 0 0.5rem;">Owner / manager individuals ({ownerIndividuals.length})</h3>
+          <div style="overflow-x: auto;">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Role</th>
+                  <th>Association</th>
+                </tr>
+              </thead>
+              <tbody>
+                {ownerIndividuals.slice(0, OWNER_DISPLAY_CAP).map((o: any) => (
+                  <tr>
+                    <td style="font-weight: 500;">{o.owner_name || '\u2014'}</td>
+                    <td style="font-size: 0.85rem;">{o['Role played by Owner or Manager in Facility'] || '\u2014'}</td>
+                    <td style="font-size: 0.85rem;">{o['Association Date'] || '\u2014'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {ownerIndividuals.length > OWNER_DISPLAY_CAP && (
+            <p style="font-size: 0.8rem; color: var(--color-text-muted);">
+              Showing {OWNER_DISPLAY_CAP} of {ownerIndividuals.length} individuals. Full list in CSV.
+            </p>
+          )}
+        </>
+      )}
+
+      <p style="font-size: 0.75rem; color: var(--color-text-muted); margin-top: 0.75rem;">
+        Source: CMS Nursing Home Ownership. Percent ownership is rarely disclosed — CMS only requires it for specific roles.
+      </p>
+    </div>
+  )}
+
+  {/* 9. FACILITY FEATURES */}
+  <div class="card" id="facility-features">
+    <h2>Facility Features</h2>
+    <dl class="kv-grid">
+      {ps('Continuing Care Retirement Community') && (
+        <>
+          <dt>CCRC</dt>
+          <dd>{ps('Continuing Care Retirement Community') === 'Y' ? 'Yes' : 'No'}</dd>
+        </>
+      )}
+      {ps('Provider Resides in Hospital') && (
+        <>
+          <dt>Hospital-based</dt>
+          <dd>{ps('Provider Resides in Hospital') === 'Y' ? 'Yes' : 'No'}</dd>
+        </>
+      )}
+      {ps('With a Resident and Family Council') && (
+        <>
+          <dt>Resident / family council</dt>
+          <dd>{ps('With a Resident and Family Council')}</dd>
+        </>
+      )}
+      {ps('Automatic Sprinkler Systems in All Required Areas') && (
+        <>
+          <dt>Sprinkler systems</dt>
+          <dd>{ps('Automatic Sprinkler Systems in All Required Areas')}</dd>
+        </>
+      )}
+      {ps('Special Focus Status') && (
+        <>
+          <dt>Special focus status</dt>
+          <dd>{ps('Special Focus Status') || 'None'}</dd>
+        </>
+      )}
+      {ps('Abuse Icon') && (
+        <>
+          <dt>Abuse citation flag</dt>
+          <dd>{ps('Abuse Icon') === 'Y' ? 'Yes — last 2 cycles' : 'No'}</dd>
+        </>
+      )}
+    </dl>
+  </div>
+
+  {/* 10. RELATED */}
+  {related.length > 0 && (
+    <div class="card" id="related">
+      <h2>Related Entities</h2>
+      <ul class="related-list">
+        {related.map((rel: any) => (
+          <li>
+            <span class={badgeClass(rel.type)}>{rel.type}</span>
+            <a href={entityUrl(rel)}>{rel.name}</a>
+            {rel.context && <span class="related-context">{rel.context}</span>}
+          </li>
+        ))}
+      </ul>
+    </div>
+  )}
+
+  <div class="methodology-stub">
+    <strong>Methodology &amp; sources</strong>
+    <ul style="margin: 0.4rem 0 0.4rem 1.25rem; padding: 0; font-size: 0.85rem;">
+      {provenance.map((p: any) => (
+        <li>
+          <strong>{p.dataset_name}</strong> (<code>{p.dataset_id}</code>),
+          vintage {p.vintage}, downloaded {p.download_date}
+          {p.row_count ? <span>, {p.row_count.toLocaleString()} rows</span> : null}.
+        </li>
+      ))}
+    </ul>
+    <p style="margin-top: 0.5rem;">
+      <a href="/methodology/">Full methodology &rarr;</a>
+    </p>
   </div>
 
   {allDataRows.length > 0 && (
     <div class="aco-section" id="all-data">
       <h2>All Data</h2>
       <p class="section-help">
-        Every labeled field shipped for this facility by CMS, with national
-        medians and percentiles where a benchmark is available.
+        Every labeled field shipped for this facility by CMS. No national median or percentile
+        context is available for SNFs in the current release.
       </p>
       <p style="margin-bottom: 0.75rem;">
         <a href={allDataCsvUri} download={`snf_${ccn}_all_data.csv`} class="btn">
@@ -419,8 +1092,6 @@ function badgeClass(type: string): string {
                 <th>Source</th>
                 <th>Metric</th>
                 <th style="text-align:right;">Value</th>
-                <th style="text-align:right;">National Median</th>
-                <th>Pctl.</th>
                 <th>Raw key</th>
               </tr>
             </thead>
@@ -430,12 +1101,6 @@ function badgeClass(type: string): string {
                   <td style="font-size: 0.8rem; color: var(--color-text-muted);">{r.group}</td>
                   <td style="font-weight: 500;">{r.label}</td>
                   <td style="text-align:right; font-variant-numeric:tabular-nums;">{r.value}</td>
-                  <td class="bm-col" style="text-align:right;">{r.bmMedian}</td>
-                  <td>
-                    {r.percentile !== undefined && (
-                      <span class={`pctl-badge ${allDataPctlClass(r.percentile)}`}>p{r.percentile}</span>
-                    )}
-                  </td>
                   <td><code style="font-size: 0.75rem;">{r.rawKey}</code></td>
                 </tr>
               ))}
@@ -480,4 +1145,188 @@ function badgeClass(type: string): string {
       updatePinLabel();
     }
   </script>
+
+  <style>
+    /* SNF-specific styles — scoped to the page */
+    .snf-overview-grid {
+      display: grid;
+      grid-template-columns: 2fr 1fr;
+      gap: 1.5rem;
+      align-items: start;
+    }
+    @media (max-width: 768px) {
+      .snf-overview-grid { grid-template-columns: 1fr; }
+    }
+    .snf-star-card {
+      text-align: center;
+      padding: 1rem;
+      border: 1px solid var(--color-border);
+      border-radius: 8px;
+      background: var(--color-bg);
+    }
+    .snf-star-display {
+      display: inline-flex;
+      align-items: baseline;
+      gap: 0.25rem;
+    }
+    .snf-star-number {
+      font-size: 3rem;
+      font-weight: 700;
+      line-height: 1;
+      color: var(--color-primary);
+    }
+    .snf-star-of {
+      font-size: 1.25rem;
+      color: var(--color-text-muted);
+    }
+    .snf-star-stars {
+      font-size: 1.5rem;
+      margin: 0.25rem 0;
+    }
+    .snf-star-label {
+      font-size: 0.8rem;
+      color: var(--color-text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .snf-flag-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      margin-bottom: 1rem;
+    }
+    .snf-flag {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      padding: 0.3rem 0.7rem;
+      border-radius: 999px;
+      font-size: 0.8rem;
+      font-weight: 500;
+      border: 1px solid transparent;
+      cursor: help;
+    }
+    .snf-flag-alert {
+      background: #fee2e2;
+      color: #991b1b;
+      border-color: #fecaca;
+    }
+    .snf-flag-warn {
+      background: #fef3c7;
+      color: #92400e;
+      border-color: #fde68a;
+    }
+    .snf-flag-info {
+      background: #dbeafe;
+      color: #1e40af;
+      border-color: #bfdbfe;
+    }
+    .snf-flag-icon { font-size: 0.9rem; }
+
+    .snf-rating-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+    .snf-rating-row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 1rem;
+      padding: 0.75rem 0;
+      border-bottom: 1px solid var(--color-border-light);
+      align-items: center;
+    }
+    .snf-rating-row:last-child { border-bottom: none; }
+    .snf-rating-help {
+      font-size: 0.8rem;
+      color: var(--color-text-muted);
+      margin-top: 0.15rem;
+    }
+    .snf-rating-footnote {
+      font-size: 0.75rem;
+      color: var(--color-warning);
+      margin-top: 0.15rem;
+      font-style: italic;
+    }
+    .snf-rating-stars {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      white-space: nowrap;
+    }
+    .snf-rating-value {
+      font-variant-numeric: tabular-nums;
+      font-weight: 500;
+    }
+    .snf-rating-sub {
+      margin-top: 0.5rem;
+      padding: 0.75rem 1rem;
+      background: var(--color-bg);
+      border-radius: 6px;
+    }
+    .snf-rating-sub-label {
+      font-size: 0.8rem;
+      color: var(--color-text-muted);
+      margin-bottom: 0.5rem;
+      font-weight: 500;
+    }
+    .snf-rating-sub-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.9rem;
+      padding: 0.3rem 0;
+    }
+
+    .snf-staffing-table td { vertical-align: top; }
+
+    .snf-severity-summary {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      margin-bottom: 1rem;
+    }
+    .snf-severity-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      padding: 0.3rem 0.7rem;
+      border-radius: 6px;
+      font-size: 0.85rem;
+    }
+    .snf-severity-pill strong { font-size: 1rem; }
+    .snf-severity-pill-inline {
+      padding: 0.15rem 0.45rem;
+      font-size: 0.8rem;
+      font-weight: 600;
+    }
+
+    .snf-chain-compare {
+      padding: 0.75rem 1rem;
+      background: var(--color-bg);
+      border-radius: 6px;
+      border: 1px solid var(--color-border-light);
+    }
+    .snf-chain-compare-title {
+      font-size: 0.8rem;
+      color: var(--color-text-muted);
+      margin-bottom: 0.5rem;
+      font-weight: 500;
+    }
+    .snf-chain-compare-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 0.75rem;
+    }
+    .snf-chain-compare-label {
+      font-size: 0.75rem;
+      color: var(--color-text-muted);
+    }
+    .snf-chain-compare-value {
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: var(--color-primary);
+    }
+  </style>
 </BaseLayout>

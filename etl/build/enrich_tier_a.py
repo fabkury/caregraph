@@ -92,6 +92,33 @@ def _safe_divide(numerator: float | None, denominator: float | None) -> float | 
     return numerator / denominator
 
 
+def _safe_sum(*parts: float | None) -> float | None:
+    """Sum parts, treating None as 0 but requiring at least one non-None input."""
+    present = [p for p in parts if p is not None]
+    if not present:
+        return None
+    return sum(present)
+
+
+def _clip_to_range(
+    value: float | None,
+    low: float,
+    high: float,
+) -> float | None:
+    """Drop implausible values from a computed metric.
+
+    CMS cost reports contain filings with data-entry errors and divisions
+    by near-zero denominators. Rather than propagating an obvious outlier
+    (e.g. a 9,000% margin, or a negative current ratio), we drop the
+    metric so the page shows "—" instead of a misleading number.
+    """
+    if value is None:
+        return None
+    if value < low or value > high:
+        return None
+    return value
+
+
 # ═══════════════════════════════════════════════════════════════════════
 # 1. Hospital Cost Report
 # ═══════════════════════════════════════════════════════════════════════
@@ -133,6 +160,9 @@ def _load_hospital_cost_report(
         ],
         "total_income": [
             "Total Income", "total_income",
+        ],
+        "total_other_income": [
+            "Total Other Income", "total_other_income",
         ],
         "total_costs": [
             "Total Costs", "total_costs",
@@ -248,64 +278,101 @@ def enrich_hospitals_cost_report(
         vals = cr_data[ccn]
         metrics: dict[str, dict[str, Any]] = {}
 
-        # Derived ratios
-        op_margin = _safe_divide(vals.get("net_income_service"), vals.get("net_patient_revenue"))
+        # Derived ratios. Each is clipped to a plausible range so bad
+        # filings (divisions by near-zero, decimal misplacement, non-
+        # operating entities on the same file) don't leak onto the page.
+        op_margin = _clip_to_range(
+            _safe_divide(vals.get("net_income_service"), vals.get("net_patient_revenue")),
+            -1.0, 1.0,
+        )
         if op_margin is not None:
             metrics["operating_margin"] = {
                 "value": round(op_margin * 100, 2),
                 "label": "Operating Margin (%)",
             }
 
-        tot_margin = _safe_divide(vals.get("net_income"), vals.get("total_income"))
+        # Total margin = Net Income / Total Revenue, where Total Revenue
+        # is Net Patient Revenue + Total Other Income. The previous
+        # implementation used the "Total Income" column as denominator,
+        # which is CMS's bottom-line (≈ Net Income) for most filers,
+        # yielding a meaningless 100% ratio on the majority of rows.
+        total_rev = _safe_sum(
+            vals.get("net_patient_revenue"),
+            vals.get("total_other_income"),
+        )
+        tot_margin = _clip_to_range(
+            _safe_divide(vals.get("net_income"), total_rev),
+            -1.0, 1.0,
+        )
         if tot_margin is not None:
             metrics["total_margin"] = {
                 "value": round(tot_margin * 100, 2),
                 "label": "Total Margin (%)",
             }
 
-        cpd = _safe_divide(vals.get("total_costs"), vals.get("total_discharges"))
+        cpd = _clip_to_range(
+            _safe_divide(vals.get("total_costs"), vals.get("total_discharges")),
+            100.0, 1_000_000.0,
+        )
         if cpd is not None:
             metrics["cost_per_discharge"] = {
                 "value": round(cpd, 0),
                 "label": "Cost per Discharge ($)",
             }
 
-        occ = _safe_divide(vals.get("total_days"), vals.get("total_bed_days"))
+        occ = _clip_to_range(
+            _safe_divide(vals.get("total_days"), vals.get("total_bed_days")),
+            0.0, 1.0,
+        )
         if occ is not None:
             metrics["occupancy_rate"] = {
                 "value": round(occ * 100, 2),
                 "label": "Occupancy Rate (%)",
             }
 
-        unc = _safe_divide(vals.get("uncompensated_care"), vals.get("total_costs"))
+        unc = _clip_to_range(
+            _safe_divide(vals.get("uncompensated_care"), vals.get("total_costs")),
+            0.0, 1.0,
+        )
         if unc is not None:
             metrics["uncompensated_care_pct"] = {
                 "value": round(unc * 100, 2),
                 "label": "Uncompensated Care (%)",
             }
 
-        cr = _safe_divide(vals.get("current_assets"), vals.get("current_liabilities"))
+        cr = _clip_to_range(
+            _safe_divide(vals.get("current_assets"), vals.get("current_liabilities")),
+            0.0, 50.0,
+        )
         if cr is not None:
             metrics["current_ratio"] = {
                 "value": round(cr, 2),
                 "label": "Current Ratio",
             }
 
-        mds = _safe_divide(vals.get("medicare_days"), vals.get("total_days"))
+        mds = _clip_to_range(
+            _safe_divide(vals.get("medicare_days"), vals.get("total_days")),
+            0.0, 1.0,
+        )
         if mds is not None:
             metrics["medicare_day_share"] = {
                 "value": round(mds * 100, 2),
                 "label": "Medicare Day Share (%)",
             }
 
-        # Direct columns
-        if vals.get("cost_to_charge_ratio") is not None:
+        # Direct columns. CCR must be in (0, 1]; a non-zero filing of
+        # exactly 0 or a value > 1 is a known bad-row signal.
+        ccr = _clip_to_range(vals.get("cost_to_charge_ratio"), 0.001, 1.0)
+        if ccr is not None:
             metrics["cost_to_charge_ratio"] = {
-                "value": round(vals["cost_to_charge_ratio"], 2),
+                "value": round(ccr, 2),
                 "label": "Cost-to-Charge Ratio",
             }
 
-        epb = _safe_divide(vals.get("fte_employees"), vals.get("number_of_beds"))
+        epb = _clip_to_range(
+            _safe_divide(vals.get("fte_employees"), vals.get("number_of_beds")),
+            0.1, 50.0,
+        )
         if epb is not None:
             metrics["employees_per_bed"] = {
                 "value": round(epb, 2),
@@ -404,6 +471,9 @@ def _load_snf_cost_report(
         ],
         "total_income": [
             "Total Income", "total_income",
+        ],
+        "total_other_income": [
+            "Total Other Income", "total_other_income",
         ],
         "total_costs": [
             "Total Costs", "total_costs",
@@ -504,50 +574,76 @@ def enrich_snfs_cost_report(
         vals = cr_data[ccn]
         metrics: dict[str, dict[str, Any]] = {}
 
-        # Derived ratios
-        op_margin = _safe_divide(vals.get("net_income_service"), vals.get("net_patient_revenue"))
+        # Derived ratios — clipped to plausible ranges; see the matching
+        # hospital block for rationale.
+        op_margin = _clip_to_range(
+            _safe_divide(vals.get("net_income_service"), vals.get("net_patient_revenue")),
+            -1.0, 1.0,
+        )
         if op_margin is not None:
             metrics["operating_margin"] = {
                 "value": round(op_margin * 100, 2),
                 "label": "Operating Margin (%)",
             }
 
-        tot_margin = _safe_divide(vals.get("net_income"), vals.get("total_income"))
+        total_rev = _safe_sum(
+            vals.get("net_patient_revenue"),
+            vals.get("total_other_income"),
+        )
+        tot_margin = _clip_to_range(
+            _safe_divide(vals.get("net_income"), total_rev),
+            -1.0, 1.0,
+        )
         if tot_margin is not None:
             metrics["total_margin"] = {
                 "value": round(tot_margin * 100, 2),
                 "label": "Total Margin (%)",
             }
 
-        cprd = _safe_divide(vals.get("total_costs"), vals.get("total_days"))
+        cprd = _clip_to_range(
+            _safe_divide(vals.get("total_costs"), vals.get("total_days")),
+            20.0, 10_000.0,
+        )
         if cprd is not None:
             metrics["cost_per_resident_day"] = {
                 "value": round(cprd, 0),
                 "label": "Cost per Resident Day ($)",
             }
 
-        occ = _safe_divide(vals.get("total_days"), vals.get("total_bed_days"))
+        occ = _clip_to_range(
+            _safe_divide(vals.get("total_days"), vals.get("total_bed_days")),
+            0.0, 1.0,
+        )
         if occ is not None:
             metrics["occupancy_rate"] = {
                 "value": round(occ * 100, 2),
                 "label": "Occupancy Rate (%)",
             }
 
-        mds = _safe_divide(vals.get("medicare_days"), vals.get("total_days"))
+        mds = _clip_to_range(
+            _safe_divide(vals.get("medicare_days"), vals.get("total_days")),
+            0.0, 1.0,
+        )
         if mds is not None:
             metrics["medicare_day_share"] = {
                 "value": round(mds * 100, 2),
                 "label": "Medicare Day Share (%)",
             }
 
-        mcds = _safe_divide(vals.get("medicaid_days"), vals.get("total_days"))
+        mcds = _clip_to_range(
+            _safe_divide(vals.get("medicaid_days"), vals.get("total_days")),
+            0.0, 1.0,
+        )
         if mcds is not None:
             metrics["medicaid_day_share"] = {
                 "value": round(mcds * 100, 2),
                 "label": "Medicaid Day Share (%)",
             }
 
-        cr = _safe_divide(vals.get("current_assets"), vals.get("current_liabilities"))
+        cr = _clip_to_range(
+            _safe_divide(vals.get("current_assets"), vals.get("current_liabilities")),
+            0.0, 50.0,
+        )
         if cr is not None:
             metrics["current_ratio"] = {
                 "value": round(cr, 2),

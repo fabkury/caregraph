@@ -25,14 +25,19 @@ def _clean(val: str | None) -> str:
 
 
 def _int_or_none(val: str | None) -> int | None:
-    """Parse an integer, returning None for blanks or non-numeric values."""
+    """Parse an integer, returning None for blanks or non-numeric values.
+
+    Floats are rounded to the nearest integer (88.6 → 89) rather than
+    truncated, so fields like average daily census aren't systematically
+    under-reported.
+    """
     if val is None:
         return None
     val = val.strip().replace(",", "")
     if val in ("", "N/A", "Not Available", ".", "*"):
         return None
     try:
-        return int(float(val))
+        return round(float(val))
     except (ValueError, TypeError):
         return None
 
