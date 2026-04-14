@@ -38,3 +38,6 @@ playwright-report/
 .idea/
 *.sublime-project
 *.sublime-workspace
+
+# === Claude Code local state ===
+.claude/

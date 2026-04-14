@@ -49,6 +49,7 @@ from etl.build.build_explore_indexes import build_explore_indexes
 from etl.build.build_aco_benchmarks import build_aco_benchmarks
 from etl.build.build_aco_peers import build_aco_peers
 from etl.build.build_hospital_benchmarks import build_hospital_benchmarks
+from etl.build.build_county_benchmarks import build_county_benchmarks
 from etl.build.enrich_tier_a import (
     enrich_hospitals_cost_report,
     enrich_snfs_cost_report,
@@ -216,6 +217,11 @@ def main() -> None:
     print("\n[Step 10c] Building hospital benchmarks...")
     hosp_benchmarks_path = site_data_dir / "hospital_benchmarks.json"
     hosp_benchmark_count = build_hospital_benchmarks(hospital_out, hosp_benchmarks_path)
+
+    # ── Step 10d: Build county benchmarks ──────────────────────────────
+    print("\n[Step 10d] Building county benchmarks...")
+    county_benchmarks_path = site_data_dir / "county_benchmarks.json"
+    county_benchmark_count = build_county_benchmarks(county_out, county_benchmarks_path)
 
     # ── Step 11: Build cross-links ──────────────────────────────────
     print("\n[Step 11] Building cross-links between entities...")

@@ -2,122 +2,368 @@
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import fs from 'node:fs';
 import path from 'node:path';
+import {
+  BENEFICIARY_FIELDS,
+  DEMOGRAPHICS_FIELDS,
+  SERVICE_SETTINGS,
+  UTILIZATION_HEADLINE_FIELDS,
+  PQI_CONDITIONS,
+  PLACES_CATEGORIES_ORDER,
+  PLACES_LOWER_IS_BETTER_CATEGORIES,
+  SDOH_GROUPS,
+  formatValue,
+  pctlClass,
+  type FieldDef,
+} from '../../config/county-fields';
+
+// ── Load benchmarks once for all county pages ──────────────────────
+
+const benchmarksPath = path.resolve(process.cwd(), '..', 'site_data', 'county_benchmarks.json');
+let benchmarkData: any = null;
+try { benchmarkData = JSON.parse(fs.readFileSync(benchmarksPath, 'utf-8')); } catch {}
+const BM: Record<string, any>    = benchmarkData?.benchmarks    || {};
+const RANKS_ALL: Record<string, Record<string, number>> = benchmarkData?.county_ranks || {};
+const NATIONAL_COUNTY_COUNT: number = benchmarkData?.metadata?.county_count || 0;
 
 export function getStaticPaths() {
   const siteDataDir = path.resolve(process.cwd(), '..', 'site_data', 'county');
   const paths: Array<{ params: { fips: string }; props: { manifest: any } }> = [];
-
   if (!fs.existsSync(siteDataDir)) return paths;
-
   const files = fs.readdirSync(siteDataDir).filter((f: string) => f.endsWith('.json'));
   for (const file of files) {
     const manifest = JSON.parse(fs.readFileSync(path.join(siteDataDir, file), 'utf-8'));
-    paths.push({
-      params: { fips: manifest.fips },
-      props: { manifest },
-    });
+    paths.push({ params: { fips: manifest.fips }, props: { manifest } });
   }
-
   return paths;
 }
 
 const { manifest } = Astro.props;
 const { fips } = Astro.params;
 
-const name = manifest.county_name;
-const state = manifest.state;
-const geoVar = manifest.data?.geographic_variation || {};
-const metrics = geoVar.metrics || {};
-const rawData = geoVar.raw || {};
+// ── Data extraction ─────────────────────────────────────────────────
 
-// Key metrics to highlight in Explore mode
-const highlightMetrics = [
-  { key: 'TOT_MDCR_STDZD_PYMT_PC', format: 'dollar' },
-  { key: 'TOT_MDCR_PYMT_PC', format: 'dollar' },
-  { key: 'BENE_AVG_RISK_SCRE', format: 'decimal' },
-  { key: 'BENE_AVG_AGE', format: 'decimal' },
-  { key: 'ACUTE_HOSP_READMSN_PCT', format: 'percent' },
-  { key: 'ER_VISITS_PER_1000_BENES', format: 'decimal' },
-  { key: 'BENE_DUAL_PCT', format: 'percent' },
-  { key: 'MA_PRTCPTN_RATE', format: 'percent' },
-  { key: 'IP_MDCR_STDZD_PYMT_PC', format: 'dollar' },
-  { key: 'SNF_MDCR_STDZD_PYMT_PC', format: 'dollar' },
-  { key: 'HH_MDCR_STDZD_PYMT_PC', format: 'dollar' },
-  { key: 'HOSPC_MDCR_STDZD_PYMT_PC', format: 'dollar' },
-];
+const name    = manifest.county_name;
+const state   = manifest.state;
+const geoVar  = manifest.data?.geographic_variation || {};
+const gvMetrics: Record<string, { value: number; label: string }> = geoVar.metrics || {};
+const gvRaw: Record<string, string> = geoVar.raw || {};
+const gvYear  = geoVar.year || '';
+const places: Record<string, any> = manifest.data?.places || {};
+const sdoh    = manifest.data?.sdoh || null;
+const sdohMeasures: Record<string, any> = sdoh?.measures || {};
+const related = manifest.related || [];
+const ranks: Record<string, number> = RANKS_ALL[fips as string] || {};
 
-function formatValue(val: number, format: string): string {
-  if (format === 'dollar') return '$' + val.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 });
-  if (format === 'percent') return val.toFixed(1) + '%';
-  return val.toFixed(2);
+function gvVal(key: string): number | null {
+  const m = gvMetrics[key];
+  return m && typeof m.value === 'number' ? m.value : null;
 }
 
-// Build CSV for download
-const csvHeaders = Object.keys(rawData);
-const csvRow = csvHeaders.map((h: string) => `"${(rawData[h] || '').replace(/"/g, '""')}"`);
+function pctl(benchKey: string): number | undefined {
+  return ranks[benchKey];
+}
+
+function medianGv(key: string): number | null {
+  const b = BM[`gv.${key}`];
+  return b ? b.p50 : null;
+}
+function medianPlaces(key: string): number | null {
+  const b = BM[`places.${key}`];
+  return b ? b.p50 : null;
+}
+function medianSdoh(key: string): number | null {
+  const b = BM[`sdoh.${key}`];
+  return b ? b.p50 : null;
+}
+
+// ── Overview "headline" cards ───────────────────────────────────────
+
+const totalBenes    = gvVal('BENES_TOTAL_CNT');
+const totalStdzdPc  = gvVal('TOT_MDCR_STDZD_PYMT_PC');
+const totalActualPc = gvVal('TOT_MDCR_PYMT_PC');
+const riskScore     = gvVal('BENE_AVG_RISK_SCRE');
+const readmPct      = gvVal('ACUTE_HOSP_READMSN_PCT');
+const maRate        = gvVal('MA_PRTCPTN_RATE');
+const dualPct       = gvVal('BENE_DUAL_PCT');
+const avgAge        = gvVal('BENE_AVG_AGE');
+
+// ── Beneficiary / demographics availability ─────────────────────────
+
+const beneFields  = BENEFICIARY_FIELDS.filter(f => gvVal(f.key) !== null);
+const demoFields  = DEMOGRAPHICS_FIELDS.filter(f => gvVal(f.key) !== null);
+
+// ── Spending composition ────────────────────────────────────────────
+// Use each service's _STDZD_PYMT_PCT (already a 0-1 share).
+// Render a horizontal bar for each service with a red median marker.
+
+interface CompositionRow {
+  label: string;
+  color: string;
+  share: number;
+  shareMedian: number | null;
+  perCapita: number | null;
+  pctKey: string;
+  pcKey: string;
+  pcPctl: number | undefined;
+}
+
+const compositionRows: CompositionRow[] = [];
+for (const s of SERVICE_SETTINGS) {
+  const pctKey = `${s.prefix}_MDCR_STDZD_PYMT_PCT`;
+  const pcKey  = `${s.prefix}_MDCR_STDZD_PYMT_PC`;
+  const share  = gvVal(pctKey);
+  if (share === null || share <= 0) continue;
+  compositionRows.push({
+    label: s.label,
+    color: s.color,
+    share,
+    shareMedian: medianGv(pctKey),
+    perCapita: gvVal(pcKey),
+    pctKey, pcKey,
+    pcPctl: pctl(`gv.${pcKey}`),
+  });
+}
+compositionRows.sort((a, b) => b.share - a.share);
+const maxShare = compositionRows.length ? compositionRows[0].share : 0;
+
+// ── Utilization: for each service, pull its natural "per 1k" rate ──
+
+interface UtilRow {
+  label: string;
+  color: string;
+  value: number;
+  label2: string;
+  usersPct: number | null;
+  usersPctl: number | undefined;
+  valuePctl: number | undefined;
+  pctKey: string;
+  colKey: string;
+}
+
+const utilizationRows: UtilRow[] = [];
+for (const s of SERVICE_SETTINGS) {
+  const v = gvVal(s.utilizationCol);
+  if (v === null) continue;
+  utilizationRows.push({
+    label: s.label,
+    color: s.color,
+    value: v,
+    label2: s.utilizationLabel,
+    usersPct: gvVal(s.beneUserCol),
+    usersPctl: pctl(`gv.${s.beneUserCol}`),
+    valuePctl: pctl(`gv.${s.utilizationCol}`),
+    pctKey: s.beneUserCol,
+    colKey: s.utilizationCol,
+  });
+}
+utilizationRows.sort((a, b) => b.value - a.value);
+
+const utilHeadlineAvailable = UTILIZATION_HEADLINE_FIELDS.filter(
+  f => gvVal(f.key) !== null,
+);
+
+// ── PQI availability ────────────────────────────────────────────────
+
+interface PqiRow {
+  label: string;
+  help: string;
+  bands: { label: string; value: number; pctl: number | undefined; median: number | null }[];
+}
+const pqiRows: PqiRow[] = [];
+for (const cond of PQI_CONDITIONS) {
+  const bands: PqiRow['bands'] = [];
+  for (const b of cond.ageBands) {
+    const v = gvVal(b.key);
+    if (v === null) continue;
+    bands.push({
+      label: b.label,
+      value: v,
+      pctl: pctl(`gv.${b.key}`),
+      median: medianGv(b.key),
+    });
+  }
+  if (bands.length > 0) pqiRows.push({ label: cond.label, help: cond.help, bands });
+}
+
+// ── PLACES grouped by category ──────────────────────────────────────
+
+interface PlacesMeasure {
+  id: string;
+  measure: string;
+  value: number;
+  lowCi: number | null;
+  highCi: number | null;
+  valueType: string;
+  pctl: number | undefined;
+  median: number | null;
+  lowerIsBetter: boolean;
+}
+
+const placesByCategory: Record<string, PlacesMeasure[]> = {};
+for (const [mid, entry] of Object.entries(places)) {
+  if (!entry || typeof entry !== 'object') continue;
+  const v = typeof entry.value === 'number' ? entry.value : null;
+  if (v === null) continue;
+  const cat = entry.category || 'Other';
+  const lowerIsBetter = PLACES_LOWER_IS_BETTER_CATEGORIES.has(cat);
+  (placesByCategory[cat] = placesByCategory[cat] || []).push({
+    id: mid,
+    measure: entry.measure || mid,
+    value: v,
+    lowCi: typeof entry.low_ci === 'number' ? entry.low_ci : null,
+    highCi: typeof entry.high_ci === 'number' ? entry.high_ci : null,
+    valueType: entry.value_type || '',
+    pctl: pctl(`places.${mid}`),
+    median: medianPlaces(mid),
+    lowerIsBetter,
+  });
+}
+for (const cat of Object.keys(placesByCategory)) {
+  placesByCategory[cat].sort((a, b) => b.value - a.value);
+}
+
+const placesCategoriesInOrder = PLACES_CATEGORIES_ORDER.filter(
+  c => placesByCategory[c] && placesByCategory[c].length > 0,
+);
+// Any category that isn't in the known order list — append at the end.
+for (const c of Object.keys(placesByCategory)) {
+  if (!placesCategoriesInOrder.includes(c)) placesCategoriesInOrder.push(c);
+}
+
+// Categories that go in the combined "Social Needs" section
+const SOCIAL_NEEDS_CATEGORY = 'Health-Related Social Needs';
+
+// ── SDOH availability ───────────────────────────────────────────────
+
+const sdohGroupsAvail = SDOH_GROUPS.map(g => ({
+  domain: g.domain,
+  fields: g.fields
+    .map(f => {
+      const m = sdohMeasures[f.key];
+      if (!m || typeof m.value !== 'number') return null;
+      return {
+        def: f,
+        value: m.value as number,
+        moe: typeof m.moe === 'number' ? (m.moe as number) : null,
+        pctl: pctl(`sdoh.${f.key}`),
+        median: medianSdoh(f.key),
+      };
+    })
+    .filter(Boolean) as Array<{ def: FieldDef; value: number; moe: number | null; pctl: number | undefined; median: number | null }>,
+})).filter(g => g.fields.length > 0);
+
+const hasSdoh = sdohGroupsAvail.length > 0;
+const hasSocialNeedsPlaces = !!placesByCategory[SOCIAL_NEEDS_CATEGORY];
+const hasSocialNeedsSection = hasSdoh || hasSocialNeedsPlaces;
+
+// ── Full data table — every labeled raw field we know about ────────
+
+interface AllDataRow {
+  group: string;
+  key: string;
+  label: string;
+  value: string;
+  bmMedian: string;
+  percentile: number | undefined;
+}
+
+function fmtNum(v: number, key: string): string {
+  // Heuristic formatting based on column name.
+  if (/_PYMT_AMT|_PYMT_PC|_PYMT_PER_USER/.test(key)) return '$' + Math.round(v).toLocaleString();
+  if (/_PCT$|_RATE$/.test(key)) return (v * 100).toFixed(1) + '%';
+  if (/PER_1000_BENES|PER_USER/.test(key)) return v.toFixed(1);
+  if (/_CNT$|AGE_/.test(key)) {
+    if (Number.isInteger(v) || v > 50) return Math.round(v).toLocaleString();
+    return v.toFixed(2);
+  }
+  return v.toFixed(2);
+}
+
+const allDataRows: AllDataRow[] = [];
+for (const [col, m] of Object.entries(gvMetrics)) {
+  const bm = BM[`gv.${col}`];
+  const medianStr = bm ? fmtNum(bm.p50, col) : '—';
+  allDataRows.push({
+    group: 'Geographic Variation',
+    key: col,
+    label: m.label,
+    value: fmtNum(m.value, col),
+    bmMedian: medianStr,
+    percentile: pctl(`gv.${col}`),
+  });
+}
+for (const [mid, entry] of Object.entries(places)) {
+  if (!entry || typeof entry.value !== 'number') continue;
+  const bm = BM[`places.${mid}`];
+  allDataRows.push({
+    group: 'CDC PLACES',
+    key: mid,
+    label: entry.measure || mid,
+    value: entry.value.toFixed(1) + '%',
+    bmMedian: bm ? bm.p50.toFixed(1) + '%' : '—',
+    percentile: pctl(`places.${mid}`),
+  });
+}
+for (const [mid, entry] of Object.entries(sdohMeasures)) {
+  if (!entry || typeof entry.value !== 'number') continue;
+  const bm = BM[`sdoh.${mid}`];
+  allDataRows.push({
+    group: 'CDC SDOH',
+    key: mid,
+    label: entry.label || mid,
+    value: entry.value.toFixed(1) + '%',
+    bmMedian: bm ? bm.p50.toFixed(1) + '%' : '—',
+    percentile: pctl(`sdoh.${mid}`),
+  });
+}
+allDataRows.sort((a, b) => {
+  if (a.group !== b.group) return a.group.localeCompare(b.group);
+  return a.label.localeCompare(b.label);
+});
+
+// ── CSV download (full raw row) ─────────────────────────────────────
+const csvHeaders = Object.keys(gvRaw);
+const csvRow = csvHeaders.map((h: string) => `"${(gvRaw[h] || '').replace(/"/g, '""')}"`);
 const csvContent = csvHeaders.join(',') + '\n' + csvRow.join(',');
 const csvDataUri = `data:text/csv;charset=utf-8,${encodeURIComponent(csvContent)}`;
 
-const provenance = manifest.provenance?.[0];
+// ── Section navigation ──────────────────────────────────────────────
 
-// SDOH data
-const sdoh = manifest.data?.sdoh || null;
+const hasOverview = totalStdzdPc !== null || totalActualPc !== null
+  || riskScore !== null || avgAge !== null || readmPct !== null
+  || maRate !== null || dualPct !== null;
+const sections: { id: string; label: string }[] = [];
+if (hasOverview) sections.push({ id: 'overview', label: 'Overview' });
+if (beneFields.length > 0) sections.push({ id: 'beneficiary', label: 'Beneficiary Profile' });
+if (compositionRows.length > 0) sections.push({ id: 'spending', label: 'Medicare Spending' });
+if (utilizationRows.length > 0 || utilHeadlineAvailable.length > 0)
+  sections.push({ id: 'utilization', label: 'Utilization' });
+if (pqiRows.length > 0) sections.push({ id: 'pqi', label: 'Preventable Admissions' });
+for (const cat of placesCategoriesInOrder) {
+  if (cat === SOCIAL_NEEDS_CATEGORY) continue;
+  sections.push({ id: 'places-' + cat.toLowerCase().replace(/[^a-z0-9]+/g, '-'), label: cat });
+}
+if (hasSocialNeedsSection) sections.push({ id: 'social-needs', label: 'Social Needs' });
+if (related.length > 0) sections.push({ id: 'related', label: 'Related Facilities' });
+if (allDataRows.length > 0) sections.push({ id: 'all-data', label: 'All Data' });
+sections.push({ id: 'methodology', label: 'Methodology' });
 
-// SDOH measures grouped by domain
-const sdohDomains: Array<{ domain: string; measures: Array<{ key: string; label: string }> }> = [
-  {
-    domain: 'Economic Stability',
-    measures: [
-      { key: 'pct_poverty', label: 'Poverty Rate' },
-      { key: 'median_household_income', label: 'Median Household Income' },
-      { key: 'unemployment_rate', label: 'Unemployment Rate' },
-    ],
-  },
-  {
-    domain: 'Education & Connectivity',
-    measures: [
-      { key: 'pct_no_high_school', label: 'No High School Diploma' },
-      { key: 'pct_broadband', label: 'Broadband Access' },
-      { key: 'pct_no_internet', label: 'No Internet Access' },
-    ],
-  },
-  {
-    domain: 'Housing & Demographics',
-    measures: [
-      { key: 'pct_crowded_housing', label: 'Crowded Housing' },
-      { key: 'pct_single_parent', label: 'Single-Parent Households' },
-      { key: 'pct_age_65_plus', label: 'Age 65+' },
-    ],
-  },
-];
+// ── Provenance provider summary ─────────────────────────────────────
+const provenance = manifest.provenance || [];
+const primaryProvenance = provenance[0] || null;
 
-// PLACES chronic conditions data
-const places = manifest.data?.places || null;
-const placesHighlight = [
-  'DIABETES', 'OBESITY', 'CHD', 'COPD', 'BPHIGH', 'STROKE',
-  'CANCER', 'DEPRESSION', 'CASTHMA', 'ARTHRITIS', 'HIGHCHOL', 'CSMOKING',
-];
-
-// Related entities
-const related = manifest.related || [];
-const relatedCapped = related.slice(0, 20);
-const relatedOverflow = related.length - 20;
-
-// Entity URL helpers
+// ── Entity URL helper ──────────────────────────────────────────────
 function entityUrl(rel: { type: string; id: string }): string {
-  if (rel.type === 'county') return `/county/${rel.id}/`;
-  if (rel.type === 'hospital') return `/hospital/${rel.id}/`;
-  if (rel.type === 'snf') return `/snf/${rel.id}/`;
-  if (rel.type === 'aco') return `/aco/${rel.id}/`;
-  if (rel.type === 'drug') return `/drug/${rel.id}/`;
-  if (rel.type === 'condition') return `/condition/${rel.id}/`;
-  if (rel.type === 'drg') return `/drg/${rel.id}/`;
-  return '#';
+  if (!rel?.type || !rel?.id) return '#';
+  return `/${rel.type}/${rel.id}/`;
 }
 
 function badgeClass(type: string): string {
   return `badge badge-${type}`;
 }
+
+const relatedCapped = related.slice(0, 50);
+const relatedOverflow = related.length - 50;
 ---
 
 <BaseLayout title={`${name}, ${state}`} description={`${name}, ${state} (FIPS: ${fips}) — County profile on CareGraph`}>
@@ -128,237 +374,580 @@ function badgeClass(type: string): string {
     </div>
     <p class="subtitle">
       FIPS: <code>{fips}</code>
+      {totalBenes !== null && <span>&middot; {Math.round(totalBenes).toLocaleString()} Medicare beneficiaries</span>}
+      {gvYear && <span>&middot; Geographic Variation {gvYear}</span>}
     </p>
   </div>
 
   <div class="actions-bar">
-    <div class="mode-toggle" id="mode-toggle">
-      <button class="active" data-mode="explore">Explore</button>
-      <button data-mode="table">Table</button>
-    </div>
-    <a href={csvDataUri} download={`county_${fips}_geographic_variation.csv`} class="btn">
-      Download CSV
-    </a>
+    <a href={csvDataUri} download={`county_${fips}_raw.csv`} class="btn">Download Raw CSV</a>
     <button class="btn" id="pin-btn" data-entity-type="county" data-entity-id={fips} data-entity-name={`${name}, ${state}`}>
       Pin to Workspace
     </button>
   </div>
 
-  <!-- Explore mode -->
-  <div id="explore-view">
-    <div class="card">
-      <h2>Geographic Variation — Key Metrics</h2>
+  <nav class="section-nav" aria-label="Data sections">
+    {sections.map(s => <a href={`#${s.id}`}>{s.label}</a>)}
+  </nav>
+
+  {NATIONAL_COUNTY_COUNT > 0 && (
+    <div class="benchmark-legend">
+      <span class="benchmark-legend-item">
+        <span class="benchmark-legend-swatch" style="background: #fee2e2;"></span> Bottom quartile
+      </span>
+      <span class="benchmark-legend-item">
+        <span class="benchmark-legend-swatch" style="background: #fef9c3;"></span> Middle
+      </span>
+      <span class="benchmark-legend-item">
+        <span class="benchmark-legend-swatch" style="background: #dcfce7;"></span> Top quartile
+      </span>
+      <span class="benchmark-legend-item" style="color: var(--color-text-muted);">
+        Percentile badges (e.g. <span class="pctl-badge pctl-mid">p50</span>) rank this county against the {NATIONAL_COUNTY_COUNT.toLocaleString()} counties with data.
+        Lower-is-better metrics (costs, readmissions, disease prevalence, etc.) use an inverted color ramp.
+      </span>
+    </div>
+  )}
+
+  <!-- ═══════════════════════ OVERVIEW ═══════════════════════ -->
+  {(totalStdzdPc !== null || totalActualPc !== null || riskScore !== null || avgAge !== null || readmPct !== null || maRate !== null || dualPct !== null) && (
+  <div class="aco-section" id="overview">
+    <h2>Overview</h2>
+    <p class="section-help">
+      Key headline metrics for Medicare beneficiaries living in {name}, {state}.
+      Source data from the CMS Medicare Fee-for-Service Geographic Variation Public Use File
+      ({gvYear}) and CDC PLACES/SDOH.
+    </p>
+
+    <div class="metric-grid">
+      {totalStdzdPc !== null && (
+        <div class="metric-card">
+          <div class="label">
+            Total Medicare Spending per Capita
+            {pctl('gv.TOT_MDCR_STDZD_PYMT_PC') !== undefined && (
+              <span class={`pctl-badge ${pctlClass(pctl('gv.TOT_MDCR_STDZD_PYMT_PC'), true)}`}>
+                p{pctl('gv.TOT_MDCR_STDZD_PYMT_PC')}
+              </span>
+            )}
+          </div>
+          <div class="value">${Math.round(totalStdzdPc).toLocaleString()}</div>
+          {medianGv('TOT_MDCR_STDZD_PYMT_PC') !== null && (
+            <div style="font-size: 0.75rem; color: var(--color-text-muted);">
+              national median ${Math.round(medianGv('TOT_MDCR_STDZD_PYMT_PC') as number).toLocaleString()}
+              &middot; standardized (payment adjustments removed)
+            </div>
+          )}
+        </div>
+      )}
+
+      {totalActualPc !== null && (
+        <div class="metric-card">
+          <div class="label">Actual Spending per Capita</div>
+          <div class="value">${Math.round(totalActualPc).toLocaleString()}</div>
+          <div style="font-size: 0.75rem; color: var(--color-text-muted);">
+            includes local geographic adjustments
+          </div>
+        </div>
+      )}
+
+      {riskScore !== null && (
+        <div class="metric-card">
+          <div class="label">
+            Average HCC Risk Score
+            {pctl('gv.BENE_AVG_RISK_SCRE') !== undefined && (
+              <span class={`pctl-badge ${pctlClass(pctl('gv.BENE_AVG_RISK_SCRE'))}`}>
+                p{pctl('gv.BENE_AVG_RISK_SCRE')}
+              </span>
+            )}
+          </div>
+          <div class="value">{riskScore.toFixed(2)}</div>
+          <div style="font-size: 0.75rem; color: var(--color-text-muted);">
+            1.00 = nationally average. Higher = sicker panel.
+          </div>
+        </div>
+      )}
+
+      {avgAge !== null && (
+        <div class="metric-card">
+          <div class="label">Average Age</div>
+          <div class="value">{avgAge.toFixed(1)}</div>
+        </div>
+      )}
+
+      {readmPct !== null && (
+        <div class="metric-card">
+          <div class="label">
+            30-Day Readmission Rate
+            {pctl('gv.ACUTE_HOSP_READMSN_PCT') !== undefined && (
+              <span class={`pctl-badge ${pctlClass(pctl('gv.ACUTE_HOSP_READMSN_PCT'), true)}`}>
+                p{pctl('gv.ACUTE_HOSP_READMSN_PCT')}
+              </span>
+            )}
+          </div>
+          <div class="value">{(readmPct * 100).toFixed(1)}%</div>
+          {medianGv('ACUTE_HOSP_READMSN_PCT') !== null && (
+            <div style="font-size: 0.75rem; color: var(--color-text-muted);">
+              national median {((medianGv('ACUTE_HOSP_READMSN_PCT') as number) * 100).toFixed(1)}%
+            </div>
+          )}
+        </div>
+      )}
+
+      {maRate !== null && (
+        <div class="metric-card">
+          <div class="label">MA Participation</div>
+          <div class="value">{(maRate * 100).toFixed(1)}%</div>
+          <div style="font-size: 0.75rem; color: var(--color-text-muted);">
+            share enrolled in Medicare Advantage
+          </div>
+        </div>
+      )}
+
+      {dualPct !== null && (
+        <div class="metric-card">
+          <div class="label">
+            Dual Eligible
+            {pctl('gv.BENE_DUAL_PCT') !== undefined && (
+              <span class={`pctl-badge ${pctlClass(pctl('gv.BENE_DUAL_PCT'))}`}>
+                p{pctl('gv.BENE_DUAL_PCT')}
+              </span>
+            )}
+          </div>
+          <div class="value">{(dualPct * 100).toFixed(1)}%</div>
+          <div style="font-size: 0.75rem; color: var(--color-text-muted);">
+            also enrolled in Medicaid — low-income marker
+          </div>
+        </div>
+      )}
+    </div>
+  </div>
+  )}
+
+  <!-- ═══════════════════════ BENEFICIARY PROFILE ═══════════════════════ -->
+  {beneFields.length > 0 && (
+    <div class="aco-section" id="beneficiary">
+      <h2>Beneficiary Profile</h2>
+      <p class="section-help">
+        Who the Medicare population is in this county — counts, enrollment mix,
+        age, and risk-adjusted complexity.
+      </p>
+
       <div class="metric-grid">
-        {highlightMetrics.map(({ key, format }) => {
-          const m = metrics[key];
-          if (!m) return null;
+        {beneFields.map(f => {
+          const v = gvVal(f.key) as number;
+          const p = pctl(`gv.${f.key}`);
           return (
             <div class="metric-card">
-              <div class="label">{m.label}</div>
-              <div class="value">{formatValue(m.value, format)}</div>
+              <div class="label">
+                {f.label}
+                {p !== undefined && (
+                  <span class={`pctl-badge ${pctlClass(p, f.lowerIsBetter)}`}>p{p}</span>
+                )}
+              </div>
+              <div class="value">{formatValue(v, f.format)}</div>
+              {f.help && (
+                <div style="font-size: 0.75rem; color: var(--color-text-muted);">{f.help}</div>
+              )}
             </div>
           );
         })}
       </div>
+
+      {demoFields.length > 0 && (
+        <div style="margin-top: 1.5rem;">
+          <h3 style="font-size: 1rem; margin-bottom: 0.5rem;">Demographic mix</h3>
+          <div class="demo-bar-group">
+            {demoFields.map(f => {
+              const v = gvVal(f.key) as number;
+              const pct = v * 100;
+              const fillClass = f.key.includes('FEML') || f.key.includes('MALE')
+                ? 'demo-bar-fill-gender' : 'demo-bar-fill-race';
+              return (
+                <div class="demo-bar-row">
+                  <div class="demo-bar-label">{f.label}</div>
+                  <div class="demo-bar-track">
+                    <div class={`demo-bar-fill ${fillClass}`} style={`width: ${pct}%;`}></div>
+                  </div>
+                  <div class="demo-bar-pct">{pct.toFixed(1)}%</div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>
+  )}
 
-    {Object.keys(metrics).length === 0 && (
-      <div class="card">
-        <p style="color: var(--color-text-muted);">
-          No Geographic Variation metrics available for this county.
-        </p>
-      </div>
-    )}
+  <!-- ═══════════════════════ SPENDING ═══════════════════════ -->
+  {compositionRows.length > 0 && (
+    <div class="aco-section" id="spending">
+      <h2>Medicare Spending per Capita</h2>
+      <p class="section-help">
+        Share of standardized per-capita Medicare spending going to each service setting.
+        Bars are this county; the <span style="color:#dc2626; font-weight:600;">red line</span> marks
+        the national county median.
+        Standardized dollars remove local payment adjustments so counties can be compared fairly.
+      </p>
 
-    {places && Object.keys(places).length > 0 && (
-      <div class="card">
-        <h2>Chronic Conditions &amp; Health Indicators (CDC PLACES)</h2>
-        <div class="metric-grid">
-          {placesHighlight.map(key => {
-            const m = places[key];
-            if (!m) return null;
+      {compositionRows.map(r => (
+        <div class="composition-row">
+          <div class="composition-label">{r.label}</div>
+          <div class="composition-bar-track">
+            <div class="composition-bar-fill"
+              style={`width: ${(r.share / maxShare) * 100}%; background: ${r.color};`}></div>
+            {r.shareMedian !== null && (
+              <div class="composition-bar-median-marker"
+                style={`left: ${(r.shareMedian / maxShare) * 100}%;`}
+                title={`national median ${(r.shareMedian * 100).toFixed(1)}%`}></div>
+            )}
+          </div>
+          <div class="composition-pct">{(r.share * 100).toFixed(1)}%</div>
+          <div class="composition-mssp">
+            {r.perCapita !== null && <>${Math.round(r.perCapita).toLocaleString()}</>}
+            {r.pcPctl !== undefined && (
+              <span class={`pctl-badge ${pctlClass(r.pcPctl, true)}`} style="margin-left: 0.3rem;">p{r.pcPctl}</span>
+            )}
+          </div>
+        </div>
+      ))}
+    </div>
+  )}
+
+  <!-- ═══════════════════════ UTILIZATION ═══════════════════════ -->
+  {(utilizationRows.length > 0 || utilHeadlineAvailable.length > 0) && (
+    <div class="aco-section" id="utilization">
+      <h2>Utilization</h2>
+      <p class="section-help">
+        How often Medicare beneficiaries use each service. Rates are per 1,000
+        beneficiaries; the "users" column shows the share of beneficiaries who
+        used the service at least once.
+      </p>
+
+      {utilHeadlineAvailable.length > 0 && (
+        <div class="metric-grid" style="margin-bottom: 1.25rem;">
+          {utilHeadlineAvailable.map(f => {
+            const v = gvVal(f.key) as number;
+            const p = pctl(`gv.${f.key}`);
+            const m = medianGv(f.key);
             return (
               <div class="metric-card">
-                <div class="label">{m.measure}</div>
-                <div class="value">{m.value}%</div>
-                <div style="font-size: 0.75rem; color: var(--color-text-muted);">
-                  CI: {m.low_ci}% &ndash; {m.high_ci}%
+                <div class="label">
+                  {f.label}
+                  {p !== undefined && (
+                    <span class={`pctl-badge ${pctlClass(p, f.lowerIsBetter)}`}>p{p}</span>
+                  )}
                 </div>
+                <div class="value">{formatValue(v, f.format)}</div>
+                {m !== null && (
+                  <div style="font-size: 0.75rem; color: var(--color-text-muted);">
+                    national median {formatValue(m, f.format)}
+                  </div>
+                )}
+                {f.help && (
+                  <div style="font-size: 0.75rem; color: var(--color-text-muted);">{f.help}</div>
+                )}
               </div>
             );
           })}
         </div>
-        <p style="font-size: 0.8rem; color: var(--color-text-muted); margin-top: 0.5rem;">
-          Source: CDC PLACES County-Level Data. Values are age-adjusted or crude prevalence estimates.
-        </p>
-      </div>
-    )}
+      )}
 
-    {sdoh && (
-      <div class="card" id="sdoh">
-        <h2>Social Determinants of Health</h2>
-        <p class="section-help">Community-level social and economic factors that influence health outcomes. Source: AHRQ SDOH Database.</p>
-
-        {sdohDomains.map(({ domain, measures }) => (
-          <div style="margin-bottom: 1rem;">
-            <h3 style="font-size: 1rem; margin-bottom: 0.5rem;">{domain}</h3>
-            <div class="metric-grid">
-              {measures.map(({ key, label }) => {
-                const val = sdoh[key];
-                if (val == null) return null;
-                const moe = sdoh[key + '_moe'];
-                const isIncome = key === 'median_household_income';
-                return (
-                  <div class="metric-card">
-                    <div class="label">{label}</div>
-                    <div class="value">
-                      {isIncome ? '$' + Math.round(val).toLocaleString() : val.toFixed(1) + '%'}
-                    </div>
-                    {moe != null && (
-                      <div style="font-size: 0.75rem; color: var(--color-text-muted);">
-                        MOE: {isIncome ? '\u00b1$' + Math.round(moe).toLocaleString() : '\u00b1' + moe.toFixed(1) + '%'}
-                      </div>
+      {utilizationRows.length > 0 && (
+        <div style="overflow-x: auto;">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Service</th>
+                <th style="text-align:right;">Rate</th>
+                <th>Unit</th>
+                <th style="text-align:right;">Users</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {utilizationRows.map(r => (
+                <tr>
+                  <td style="font-weight: 500;">
+                    <span style={`display:inline-block; width:10px; height:10px; background:${r.color}; border-radius:2px; margin-right:0.4rem; vertical-align:middle;`}></span>
+                    {r.label}
+                  </td>
+                  <td style="text-align:right; font-variant-numeric:tabular-nums;">
+                    {r.value.toFixed(1)}
+                    {r.valuePctl !== undefined && (
+                      <span class={`pctl-badge ${pctlClass(r.valuePctl)}`}>p{r.valuePctl}</span>
                     )}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        ))}
-      </div>
-    )}
+                  </td>
+                  <td style="color: var(--color-text-muted); font-size: 0.85rem;">{r.label2}</td>
+                  <td style="text-align:right; font-variant-numeric:tabular-nums;">
+                    {r.usersPct !== null ? (r.usersPct * 100).toFixed(1) + '%' : '—'}
+                  </td>
+                  <td>
+                    {r.usersPctl !== undefined && (
+                      <span class={`pctl-badge ${pctlClass(r.usersPctl)}`}>p{r.usersPctl}</span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  )}
 
-    {related.length > 0 && (
-      <div class="card">
-        <h2>Related Entities</h2>
-        <ul class="related-list">
-          {relatedCapped.map((rel: any) => (
-            <li>
-              <span class={badgeClass(rel.type)}>{rel.type}</span>
-              <a href={entityUrl(rel)}>{rel.name}</a>
-              {rel.context && <span class="related-context">{rel.context}</span>}
-            </li>
-          ))}
-        </ul>
-        {relatedOverflow > 0 && (
-          <p style="color: var(--color-text-muted); font-size: 0.85rem; margin-top: 0.5rem;">
-            and {relatedOverflow} more...
-          </p>
-        )}
-      </div>
-    )}
-
-    <div class="methodology-stub">
-      <strong>Methodology</strong>
-      <p>
-        Data source: <strong>{provenance?.dataset_name}</strong>
-        (dataset ID: <code>{provenance?.dataset_id}</code>).
-        Vintage: {provenance?.vintage}.
-        Downloaded: {provenance?.download_date}.
-        Rows in source: {provenance?.row_count?.toLocaleString()}.
+  <!-- ═══════════════════════ PREVENTABLE ADMISSIONS (PQI) ═══════════════════════ -->
+  {pqiRows.length > 0 && (
+    <div class="aco-section" id="pqi">
+      <h2>Preventable Admissions (AHRQ PQIs)</h2>
+      <p class="section-help">
+        Hospital admission rates per 100,000 population for ambulatory-care-sensitive
+        conditions. Higher rates suggest gaps in outpatient management — people ending
+        up in hospital for conditions that good primary care could keep controlled.
+        Rates are age-stratified because older patients have higher baselines.
       </p>
-      {manifest.provenance?.length > 1 && (
-        <p>
-          Additional data sources:
-          {manifest.provenance.slice(1).map((p: any) => (
-            <span> <strong>{p.dataset_name}</strong> ({p.vintage})</span>
+
+      {pqiRows.map(cond => (
+        <div style="margin-bottom: 1.25rem;">
+          <h3 style="font-size: 1rem; margin-bottom: 0.35rem;">{cond.label}</h3>
+          <p style="font-size: 0.8rem; color: var(--color-text-muted); margin: 0 0 0.5rem 0;">{cond.help}</p>
+          <div class="metric-grid">
+            {cond.bands.map(b => (
+              <div class="metric-card">
+                <div class="label">
+                  Age {b.label}
+                  {b.pctl !== undefined && (
+                    <span class={`pctl-badge ${pctlClass(b.pctl, true)}`}>p{b.pctl}</span>
+                  )}
+                </div>
+                <div class="value">{Math.round(b.value).toLocaleString()}</div>
+                <div style="font-size: 0.75rem; color: var(--color-text-muted);">
+                  per 100k
+                  {b.median !== null && <> · national median {Math.round(b.median).toLocaleString()}</>}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  )}
+
+  <!-- ═══════════════════════ PLACES (non-social-needs categories) ═══════════════════════ -->
+  {placesCategoriesInOrder.filter(c => c !== SOCIAL_NEEDS_CATEGORY).map(cat => {
+    const measures = placesByCategory[cat];
+    const sectionId = 'places-' + cat.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+    return (
+      <div class="aco-section" id={sectionId}>
+        <h2>{cat}</h2>
+        <p class="section-help">
+          CDC PLACES — modeled prevalence of {cat.toLowerCase()} among county adults.
+          Values are age-adjusted or crude prevalence estimates with 95% CIs.
+        </p>
+        <div class="metric-grid">
+          {measures.map(m => (
+            <div class="metric-card">
+              <div class="label">
+                {m.measure}
+                {m.pctl !== undefined && (
+                  <span class={`pctl-badge ${pctlClass(m.pctl, m.lowerIsBetter)}`}>p{m.pctl}</span>
+                )}
+              </div>
+              <div class="value">{m.value.toFixed(1)}%</div>
+              <div style="font-size: 0.75rem; color: var(--color-text-muted);">
+                {m.lowCi !== null && m.highCi !== null && (
+                  <>95% CI: {m.lowCi.toFixed(1)}% – {m.highCi.toFixed(1)}%</>
+                )}
+                {m.median !== null && (
+                  <> · national median {m.median.toFixed(1)}%</>
+                )}
+              </div>
+              {m.valueType && (
+                <div style="font-size: 0.7rem; color: var(--color-text-muted); font-style: italic;">
+                  {m.valueType}
+                </div>
+              )}
+            </div>
           ))}
+        </div>
+      </div>
+    );
+  })}
+
+  <!-- ═══════════════════════ SOCIAL NEEDS + SDOH ═══════════════════════ -->
+  {hasSocialNeedsSection && (
+    <div class="aco-section" id="social-needs">
+      <h2>Health-Related Social Needs</h2>
+      <p class="section-help">
+        Community-level social and economic factors that drive health outcomes.
+        Combines CDC PLACES health-related social-need measures (modeled from BRFSS)
+        with CDC SDOH structural measures (from the American Community Survey).
+      </p>
+
+      {placesByCategory[SOCIAL_NEEDS_CATEGORY] && (
+        <div style="margin-bottom: 1.25rem;">
+          <h3 style="font-size: 1rem; margin-bottom: 0.5rem;">Reported unmet needs (PLACES)</h3>
+          <div class="metric-grid">
+            {placesByCategory[SOCIAL_NEEDS_CATEGORY].map(m => (
+              <div class="metric-card">
+                <div class="label">
+                  {m.measure}
+                  {m.pctl !== undefined && (
+                    <span class={`pctl-badge ${pctlClass(m.pctl, m.lowerIsBetter)}`}>p{m.pctl}</span>
+                  )}
+                </div>
+                <div class="value">{m.value.toFixed(1)}%</div>
+                {m.lowCi !== null && m.highCi !== null && (
+                  <div style="font-size: 0.75rem; color: var(--color-text-muted);">
+                    95% CI: {m.lowCi.toFixed(1)}% – {m.highCi.toFixed(1)}%
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {sdohGroupsAvail.map(g => (
+        <div style="margin-bottom: 1.25rem;">
+          <h3 style="font-size: 1rem; margin-bottom: 0.5rem;">{g.domain}</h3>
+          <div class="metric-grid">
+            {g.fields.map(f => (
+              <div class="metric-card">
+                <div class="label">
+                  {f.def.label}
+                  {f.pctl !== undefined && (
+                    <span class={`pctl-badge ${pctlClass(f.pctl, f.def.lowerIsBetter)}`}>p{f.pctl}</span>
+                  )}
+                </div>
+                <div class="value">{formatValue(f.value, f.def.format)}</div>
+                <div style="font-size: 0.75rem; color: var(--color-text-muted);">
+                  {f.median !== null && <>national median {formatValue(f.median, f.def.format)}</>}
+                  {f.moe !== null && <> · MOE ±{f.moe.toFixed(1)}</>}
+                </div>
+                {f.def.help && (
+                  <div style="font-size: 0.7rem; color: var(--color-text-muted);">{f.def.help}</div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  )}
+
+  <!-- ═══════════════════════ RELATED ENTITIES ═══════════════════════ -->
+  {related.length > 0 && (
+    <div class="aco-section" id="related">
+      <h2>Related Facilities & Organizations</h2>
+      <p class="section-help">
+        Medicare-participating hospitals, SNFs, and ACOs that serve this county.
+      </p>
+      <ul class="related-list">
+        {relatedCapped.map((rel: any) => (
+          <li>
+            <span class={badgeClass(rel.type)}>{rel.type}</span>
+            <a href={entityUrl(rel)}>{rel.name}</a>
+            {rel.context && <span class="related-context">{rel.context}</span>}
+          </li>
+        ))}
+      </ul>
+      {relatedOverflow > 0 && (
+        <p style="color: var(--color-text-muted); font-size: 0.85rem; margin-top: 0.5rem;">
+          and {relatedOverflow.toLocaleString()} more…
         </p>
       )}
-      <p>
-        <em>Medicare Geographic Variation</em> shows standardized per capita spending,
-        utilization, and demographic characteristics for Medicare fee-for-service beneficiaries
-        at the county level. Standardized payments remove geographic payment adjustments to
-        enable fair comparison across regions.
-      </p>
-      <p>
-        <a href="/methodology/">Full methodology &rarr;</a>
-      </p>
     </div>
-  </div>
+  )}
 
-  <!-- Table mode -->
-  <div id="table-view" style="display: none;">
-    <div class="card">
-      <h2>All Geographic Variation Fields</h2>
-      <div style="overflow-x: auto;">
-        <table class="data-table" id="data-table">
-          <thead>
-            <tr>
-              <th>Field</th>
-              <th>Value</th>
-            </tr>
-          </thead>
-          <tbody>
-            {Object.entries(rawData).map(([key, value]) => (
+  <!-- ═══════════════════════ ALL DATA TABLE ═══════════════════════ -->
+  {allDataRows.length > 0 && (
+    <div class="aco-section" id="all-data">
+      <h2>All Data</h2>
+      <p class="section-help">
+        Every labeled metric surfaced from Geographic Variation, PLACES, and SDOH,
+        alongside the national county median for context.
+      </p>
+      <details>
+        <summary style="cursor: pointer; color: var(--color-primary); margin-bottom: 0.75rem;">
+          Show {allDataRows.length.toLocaleString()} rows
+        </summary>
+        <div style="overflow-x: auto;">
+          <table class="data-table">
+            <thead>
               <tr>
-                <td style="font-weight: 500;">{key}</td>
-                <td>{value as string || '\u2014'}</td>
+                <th>Source</th>
+                <th>Metric</th>
+                <th style="text-align:right;">Value</th>
+                <th style="text-align:right;">National Median</th>
+                <th>Pctl.</th>
+                <th>Raw key</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody>
+              {allDataRows.map(r => (
+                <tr>
+                  <td style="font-size: 0.8rem; color: var(--color-text-muted);">{r.group}</td>
+                  <td style="font-weight: 500;">{r.label}</td>
+                  <td style="text-align:right; font-variant-numeric:tabular-nums;">{r.value}</td>
+                  <td class="bm-col" style="text-align:right;">{r.bmMedian}</td>
+                  <td>
+                    {r.percentile !== undefined && (
+                      <span class={`pctl-badge ${pctlClass(r.percentile)}`}>p{r.percentile}</span>
+                    )}
+                  </td>
+                  <td><code style="font-size: 0.75rem;">{r.key}</code></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </details>
     </div>
+  )}
+
+  <!-- ═══════════════════════ METHODOLOGY ═══════════════════════ -->
+  <div class="aco-section" id="methodology">
+    <h2>Methodology</h2>
+    {primaryProvenance && (
+      <p>
+        Primary source: <strong>{primaryProvenance.dataset_name}</strong>
+        (dataset id <code>{primaryProvenance.dataset_id}</code>,
+        vintage {primaryProvenance.vintage},
+        downloaded {primaryProvenance.download_date},
+        {primaryProvenance.row_count?.toLocaleString()} rows in source).
+      </p>
+    )}
+    {provenance.length > 1 && (
+      <p>
+        Additional data sources:{' '}
+        {provenance.slice(1).map((p: any, i: number) => (
+          <span>{i > 0 ? ', ' : ''}<strong>{p.dataset_name}</strong> ({p.vintage})</span>
+        ))}.
+      </p>
+    )}
+    <p>
+      Percentile badges compare this county against all US counties that appear in
+      the relevant dataset. "Lower is better" metrics (spending, readmission rates,
+      chronic-disease prevalence, SDOH adversity) use an inverted color ramp —
+      low percentile = green (good), high percentile = red (bad).
+    </p>
+    <p>
+      Medicare Geographic Variation shows standardized per-capita spending,
+      utilization, and demographic characteristics for Medicare fee-for-service
+      beneficiaries at the county level. Standardized payments remove
+      geographic payment adjustments so counties can be compared fairly.
+      AHRQ Prevention Quality Indicators (PQIs) measure the rate of
+      hospitalization for ambulatory-care-sensitive conditions (ACSCs).
+    </p>
+    <p><a href="/methodology/">Full methodology →</a></p>
   </div>
-
-  <script>
-    // Mode toggle
-    const toggle = document.getElementById('mode-toggle');
-    const exploreView = document.getElementById('explore-view');
-    const tableView = document.getElementById('table-view');
-
-    if (toggle && exploreView && tableView) {
-      const buttons = toggle.querySelectorAll('button');
-      const savedMode = localStorage.getItem('caregraph-mode') || 'explore';
-      setMode(savedMode);
-
-      buttons.forEach(btn => {
-        btn.addEventListener('click', () => {
-          const mode = btn.getAttribute('data-mode') || 'explore';
-          setMode(mode);
-          localStorage.setItem('caregraph-mode', mode);
-        });
-      });
-
-      function setMode(mode: string) {
-        buttons.forEach(b => b.classList.toggle('active', b.getAttribute('data-mode') === mode));
-        exploreView!.style.display = mode === 'explore' ? '' : 'none';
-        tableView!.style.display = mode === 'table' ? '' : 'none';
-      }
-    }
-
-    // Simple table sorting
-    const table = document.getElementById('data-table') as HTMLTableElement | null;
-    if (table) {
-      const headers = table.querySelectorAll('th');
-      headers.forEach((header, index) => {
-        header.addEventListener('click', () => {
-          const tbody = table.querySelector('tbody');
-          if (!tbody) return;
-          const rows = Array.from(tbody.querySelectorAll('tr'));
-          const ascending = header.getAttribute('data-sort') !== 'asc';
-          header.setAttribute('data-sort', ascending ? 'asc' : 'desc');
-          rows.sort((a, b) => {
-            const aVal = a.cells[index]?.textContent || '';
-            const bVal = b.cells[index]?.textContent || '';
-            return ascending ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
-          });
-          rows.forEach(row => tbody.appendChild(row));
-        });
-      });
-    }
-  </script>
 
   <script>
     import { isPinned, addPin, removePin } from '../../scripts/workspace';
-
     const pinBtn = document.getElementById('pin-btn') as HTMLButtonElement | null;
     if (pinBtn) {
       const entityType = pinBtn.dataset.entityType!;
       const entityId = pinBtn.dataset.entityId!;
       const entityName = pinBtn.dataset.entityName!;
-
       function updatePinLabel() {
         if (!pinBtn) return;
         if (isPinned(entityType, entityId)) {
@@ -371,16 +960,11 @@ function badgeClass(type: string): string {
           pinBtn.style.color = '';
         }
       }
-
       pinBtn.addEventListener('click', () => {
-        if (isPinned(entityType, entityId)) {
-          removePin(entityType, entityId);
-        } else {
-          addPin(entityType, entityId, entityName);
-        }
+        if (isPinned(entityType, entityId)) removePin(entityType, entityId);
+        else addPin(entityType, entityId, entityName);
         updatePinLabel();
       });
-
       updatePinLabel();
     }
   </script>
