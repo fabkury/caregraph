@@ -8,13 +8,13 @@ NADAC reports per-unit ingredient costs at the NDC (National Drug Code) level, c
 
 NADAC records are matched to CareGraph drug entities by generic drug name. Each NADAC record includes an NDC and a drug name string; CareGraph normalizes the drug name and joins it to its canonical drug entities using the generic name. This join is performed as a string match after lowercasing and stripping salt-form suffixes where feasible.
 
-Because NADAC reports at the NDC level â€” which distinguishes between strengths, dosage forms, and package sizes â€” multiple NADAC records may map to a single CareGraph drug entity. CareGraph aggregates or selects representative records per drug entity during ETL. The matched NADAC data appears on drug entity pages (e.g., `/drug/metformin`).
+Because NADAC reports at the NDC level — which distinguishes between strengths, dosage forms, and package sizes — multiple NADAC records may map to a single CareGraph drug entity. CareGraph aggregates or selects representative records per drug entity during ETL. The matched NADAC data appears on drug entity pages (e.g., `/drug/metformin`).
 
 Name-based matching introduces ambiguity for combination products, extended-release formulations, and drugs with multiple salt forms (e.g., metoprolol tartrate vs. metoprolol succinate). These cases may result in imprecise matches or missed joins.
 
 ## Known Limitations
 
-- **Medicaid channel only.** NADAC reflects acquisition costs for retail community pharmacies in the Medicaid supply chain. Prices in other channels â€” hospital, specialty pharmacy, mail-order, and 340B covered entities â€” may differ substantially and are not represented.
+- **Medicaid channel only.** NADAC reflects acquisition costs for retail community pharmacies in the Medicaid supply chain. Prices in other channels — hospital, specialty pharmacy, mail-order, and 340B covered entities — may differ substantially and are not represented.
 - **Voluntary survey with variable response rates.** The pharmacy survey is voluntary. For widely dispensed generics, survey response counts are robust. For specialty drugs or drugs with limited retail distribution, few pharmacies may report, producing less reliable cost estimates.
 - **Ingredient cost only.** NADAC excludes dispensing fees, pharmacy markups, and manufacturer rebates. For branded drugs, the gap between NADAC and what payers actually pay net of rebates can be substantial, making NADAC a poor proxy for net drug cost.
 - **Point-in-time snapshot.** CareGraph currently captures only the most recent NADAC price, not historical price trends. NADAC prices can fluctuate weekly, so the displayed price reflects a single point in time that may not represent longer-term pricing.
