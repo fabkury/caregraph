@@ -126,11 +126,26 @@ function rowIdentifier(obj: Record<string, any>, fallbackIdx: number): string {
   return `#${fallbackIdx + 1}`;
 }
 
+export interface FlattenOptions {
+  /**
+   * When true, top-level arrays are skipped entirely. Use this for pages
+   * whose dedicated sections already render the per-record data (hospital
+   * quality measures, SNF deficiencies/ownership): flattening them into
+   * the All Data table would emit one row per (record, field), which on
+   * data-rich hospitals produces thousands of rows and pushes the
+   * published site past the GitHub Pages size limit.
+   */
+  skipArrays?: boolean;
+}
+
 export function flattenDataset(
   groupLabel: string,
   node: unknown,
   rows: AllDataRow[],
+  options: FlattenOptions = {},
 ): void {
+  const { skipArrays = false } = options;
+  if (skipArrays && Array.isArray(node)) return;
   walk('', '', node);
 
   function walk(pathKey: string, pathLabel: string, n: any): void {

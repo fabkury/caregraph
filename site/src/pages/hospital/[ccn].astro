@@ -233,14 +233,17 @@ if (readmissions) {
 }
 
 // Any other data.* subkey — flatten generically so pages don't break when
-// new enrichments land. Delegated to shared helper so hospital + SNF emit
-// consistent rows and both handle {value,label} metric envelopes, deeper
-// nesting, and arrays of structured records.
+// new enrichments land. skipArrays=true because the large CMS quality-
+// measure arrays (HCAHPS, HAI, Timely Care, Complications, Unplanned
+// Visits) are already rendered in their own dedicated sections above;
+// flattening them into the All Data table would duplicate content and
+// blow the page past ~2 MB each, pushing the whole static site past the
+// GitHub Pages 1 GB published-size limit.
 const handledDsKeys = new Set(['general_info', 'vbp', 'readmissions']);
 for (const [dsKey, ds] of Object.entries(manifest.data || {})) {
   if (handledDsKeys.has(dsKey)) continue;
   const groupLabel = HOSPITAL_GROUP_LABELS[dsKey] || dsKey.replace(/_/g, ' ');
-  flattenDataset(groupLabel, ds, allDataRows);
+  flattenDataset(groupLabel, ds, allDataRows, { skipArrays: true });
 }
 
 allDataRows.sort((a, b) => {

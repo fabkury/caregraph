@@ -256,11 +256,15 @@ for (const [k, v] of Object.entries(providerInfo)) {
   });
 }
 
+// skipArrays: deficiencies, penalties, and ownership each render in their
+// own dedicated section on the page. Including their per-record fields in
+// the All Data table added ~200 rows per facility, which across 14k SNFs
+// pushed total site size past the GitHub Pages 1 GB limit.
 const handledSnfKeys = new Set(['provider_info']);
 for (const [dsKey, ds] of Object.entries(manifest.data || {})) {
   if (handledSnfKeys.has(dsKey)) continue;
   const groupLabel = SNF_GROUP_LABELS[dsKey] || dsKey.replace(/_/g, ' ');
-  flattenDataset(groupLabel, ds, allDataRows);
+  flattenDataset(groupLabel, ds, allDataRows, { skipArrays: true });
 }
 
 allDataRows.sort((a, b) => {
